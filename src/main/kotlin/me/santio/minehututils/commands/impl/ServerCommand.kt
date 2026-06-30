@@ -95,11 +95,11 @@ class ServerCommand : SlashCommand {
 
         val guild = event.guild ?: return
         val data = server(serverId) ?: run {
-            event.reply(EmbedFactory.error("Failed to find the server", guild)).queue()
+            event.reply(EmbedFactory.error("Failed to find the server", guild)).setEphemeral(true).queue()
             return
         }
 
-        event.reply(buildServerEmbed(guild, data)).queue()
+        event.reply(buildServerEmbed(guild, data)).setEphemeral(true).queue()
     }
 
 }
