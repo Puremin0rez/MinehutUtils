@@ -39,7 +39,7 @@ class SlowModeCommand : SlashCommand {
         // Text, voice, forum channels and threads all support slowmode
         val channel = event.channel as? ISlowmodeChannel ?: error("Slowmode can't be set in this channel")
 
-        val seconds = min(duration.toSeconds().toInt(), ISlowmodeChannel.MAX_SLOWMODE)
+        val seconds = min(duration.toSeconds(), ISlowmodeChannel.MAX_SLOWMODE.toLong()).toInt()
         channel.manager.setSlowmode(seconds).await()
         val setDuration = seconds.seconds
 
