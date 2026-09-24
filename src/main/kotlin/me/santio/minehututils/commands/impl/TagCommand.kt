@@ -82,6 +82,23 @@ class TagCommand : SlashCommand {
         }
     }
 
+    /**
+     * Find a tag by the id option, only matching tags that are global or belong to this guild
+     */
+    private fun findTag(event: SlashCommandInteractionEvent): Tag {
+        val id = event.getOption("id")?.asString ?: error("Tag id not provided")
+        return TagManager.get(id.toIntOrNull() ?: error("Tag not found"))
+            ?.takeIf { it.guildId == null || it.guildId == event.guild!!.id }
+            ?: error("Tag not found")
+    }
+
+    /**
+     * Regex tags are compiled when loaded, so an invalid pattern must never be saved
+     */
+    private fun isValidSearch(searchAlg: SearchAlgorithm, searchValue: String): Boolean {
+        return searchAlg != SearchAlgorithm.REGEX || runCatching { Regex(searchValue) }.isSuccess
+    }
+
     private suspend fun createTag(event: SlashCommandInteractionEvent) {
         val type = event.getOption("type")?.asString ?: error("Type not provided")
         val searchAlg = SearchAlgorithm.from(type) ?: error("Invalid search algorithm provided")
@@ -103,6 +120,11 @@ class TagCommand : SlashCommand {
                 ?: error("No search value provided")
             val body = it.values.firstOrNull { it.id == "minehut:tag:body" }?.asString
                 ?: error("No body provided")
+
+            if (!isValidSearch(searchAlg, searchValue.trim())) {
+                it.replyEmbeds(EmbedFactory.error("That isn't a valid regex", event.guild!!).build()).setEphemeral(true).queue()
+                return@listener
+            }
 
             val tag = Tag(
                 searchAlg = searchAlg.id,
@@ -131,8 +153,7 @@ class TagCommand : SlashCommand {
     }
 
     private suspend fun deleteTag(event: SlashCommandInteractionEvent) {
-        val id = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(id.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
+        val tag = findTag(event)
 
         TagManager.remove(tag)
 
@@ -171,13 +192,12 @@ class TagCommand : SlashCommand {
     }
 
     private suspend fun editTag(event: SlashCommandInteractionEvent) {
-        val tagId = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(tagId.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
-        val global = event.getOption("global")?.asBoolean == true
-        val type = event.getOption("type")?.asString ?: tag.searchAlg().id
-
-        // Prevent modifying a tag in other guilds
-        if (tag.guildId != null && tag.guildId != event.guild!!.id) error("You can only edit tags in the same guild as the tag")
+        val tag = findTag(event)
+        // Keep the tag's current scope unless it's explicitly changed, so editing a global tag doesn't make it local
+        val global = event.getOption("global")?.asBoolean ?: (tag.guildId == null)
+        val searchAlg = event.getOption("type")?.asString
+            ?.let { SearchAlgorithm.from(it) ?: error("Invalid search algorithm provided") }
+            ?: tag.searchAlg()
 
         val id = UUID.randomUUID().toString()
         val modal = Modal("minehut:tag:edit:$id", "Edit a tag") {
@@ -196,10 +216,15 @@ class TagCommand : SlashCommand {
             val body = it.values.firstOrNull { it.id == "minehut:tag:body" }?.asString
                 ?: error("No body provided")
 
+            if (!isValidSearch(searchAlg, searchValue)) {
+                it.replyEmbeds(EmbedFactory.error("That isn't a valid regex", event.guild!!).build()).setEphemeral(true).queue()
+                return@listener
+            }
+
             tag.searchValue = searchValue
             tag.body = body
             tag.guildId = if (global) null else event.guild!!.id
-            tag.searchAlg(SearchAlgorithm.from(type) ?: error("Invalid search algorithm provided"))
+            tag.searchAlg(searchAlg)
 
             TagManager.save(tag)
 
@@ -217,8 +242,7 @@ class TagCommand : SlashCommand {
     }
 
     private fun getTagInfo(event: SlashCommandInteractionEvent) {
-        val tagId = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(tagId.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
+        val tag = findTag(event)
 
         event.replyEmbeds(
             EmbedFactory.default(
