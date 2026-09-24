@@ -78,7 +78,8 @@ object MarketplaceManager: DatabaseHook {
 
         e.replyModal(Modal("minehut:marketplace:modal:$id", "Customize your listing") {
             short("minehut:listing:title", "The title of your listing", requiredLength = IntRange(1, 100))
-            paragraph("minehut:listing:description", "The description of your listing")
+            // Leaves room for the listing header within Discord's 4096 character embed limit
+            paragraph("minehut:listing:description", "The description of your listing", requiredLength = IntRange(1, 3800))
         }).queue()
 
         bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
