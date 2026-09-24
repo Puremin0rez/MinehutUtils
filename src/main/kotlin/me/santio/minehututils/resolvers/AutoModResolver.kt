@@ -14,7 +14,9 @@ import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException
 import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
+import org.slf4j.LoggerFactory
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Provides an easy way to run messages and queries through auto mod, this will try it's best to mimic the exact
@@ -22,8 +24,9 @@ import java.util.concurrent.CompletableFuture
  */
 object AutoModResolver {
 
+    private val logger = LoggerFactory.getLogger(AutoModResolver::class.java)
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val mentionRegex = Regex("<@!?\\d{18}>")
+    private val mentionRegex = Regex("<@!?\\d{17,20}>")
 
     /**
      * Parses a query and checks if it passes all auto mod rules
@@ -43,20 +46,23 @@ object AutoModResolver {
                     var passes = rule.passes(query, interaction.guildChannel, member)
 
                     val mentions = mentionRegex.findAll(query).count()
-                    if (mentions > 0 && rule.mentionLimit > mentions) passes = false
+                    if (rule.mentionLimit > 0 && mentions > rule.mentionLimit) passes = false
 
                     if (!passes) {
                         for (action in rule.actions) {
-                            when (action.type) {
-                                AutoModResponse.Type.SEND_ALERT_MESSAGE -> coroutineScope.launch(exceptionHandler) {
-                                    sendLog(query, guild, interaction, rule)
-                                }
-                                AutoModResponse.Type.TIMEOUT -> {
-                                    action.timeoutDuration?.let { member.timeoutFor(it) }
-                                }
+                            // A failed action (such as missing permissions) must not change the verdict
+                            runCatching {
+                                when (action.type) {
+                                    AutoModResponse.Type.SEND_ALERT_MESSAGE -> coroutineScope.launch(exceptionHandler) {
+                                        sendLog(query, guild, interaction, rule)
+                                    }
+                                    AutoModResponse.Type.TIMEOUT -> {
+                                        action.timeoutDuration?.let { member.timeoutFor(it) }
+                                    }
 
-                                else -> {}
-                            }
+                                    else -> {}
+                                }
+                            }.onFailure { logger.warn("Failed to run the auto mod action {}: {}", action.type, it.toString()) }
                         }
 
                         future.complete(false)
@@ -92,16 +98,16 @@ object AutoModResolver {
         vararg queries: String
     ): CompletableFuture<Boolean> {
         val future = CompletableFuture<Boolean>()
-        var remaining = queries.size
+        val remaining = AtomicInteger(queries.size)
 
         for (query in queries) {
-            parse(guild, query, member, interaction).thenAccept {
-                if (!it) {
+            parse(guild, query, member, interaction).whenComplete { passes, _ ->
+                if (passes == false) {
                     future.complete(false)
-                    return@thenAccept
+                    return@whenComplete
                 }
 
-                if (--remaining == 0) {
+                if (remaining.decrementAndGet() == 0) {
                     future.complete(true)
                 }
             }
@@ -114,7 +120,8 @@ object AutoModResolver {
         if (channel in this.exemptChannels) return true
         if (member.roles.any { it in this.exemptRoles }) return true
 
-        val regex = this.filteredRegex.map { Regex(it, RegexOption.IGNORE_CASE) }
+        // Discord uses Rust regex syntax, skip any pattern Java can't compile instead of failing the whole check
+        val regex = this.filteredRegex.mapNotNull { runCatching { Regex(it, RegexOption.IGNORE_CASE) }.getOrNull() }
         val blockedWords = this.filteredKeywords
         val allowedWords = this.allowlist
 
