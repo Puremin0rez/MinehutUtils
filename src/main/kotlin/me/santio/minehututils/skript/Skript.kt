@@ -9,6 +9,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.gson.*
 import kotlinx.coroutines.launch
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.scope
 import me.santio.minehututils.skript.models.SkriptExample
 import me.santio.minehututils.skript.models.SkriptSyntax
@@ -56,7 +57,7 @@ object Skript {
     fun refreshData() {
         if (env("SKRIPTHUB_KEY") == null) return
 
-        scope.launch {
+        scope.launch(exceptionHandler) {
             // Fetch syntax list
             val list = httpClient.get("syntax")
                 .takeIf { it.status.isSuccess() }
