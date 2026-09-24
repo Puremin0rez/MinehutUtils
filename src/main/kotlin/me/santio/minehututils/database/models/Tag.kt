@@ -126,7 +126,7 @@ data class Tag(
         }
 
         if (buttons.isNotEmpty()) reply.setActionRow(*buttons.toTypedArray())
-        reply.queue()
+        reply.queue(null) { logger.warn("Failed to send tag {} in {}: {}", id, message.channel.id, it.toString()) }
     }
 
     private companion object {

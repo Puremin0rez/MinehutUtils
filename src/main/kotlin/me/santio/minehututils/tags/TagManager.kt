@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.Tag
 import me.santio.minehututils.iron
+import java.util.concurrent.ConcurrentSkipListMap
 
 /**
  * Manages the tags registered to the bot, this adds an in-memory cache layer to the database
@@ -12,15 +13,14 @@ import me.santio.minehututils.iron
  */
 object TagManager: DatabaseHook {
 
-    private val tags = mutableSetOf<Tag>()
+    // Keyed by id: tags are read on every message while uses are saved from other threads
+    private val tags = ConcurrentSkipListMap<Int, Tag>()
 
     override suspend fun onHook() {
-        tags.addAll(this.fetchAll())
+        this.fetchAll().forEach { tags[it.id!!] = it }
     }
 
     suspend fun add(tag: Tag) {
-        tags.add(tag)
-
         val id = iron.prepare(
             "INSERT INTO tags(search_alg, search_value, body, created_at, updated_at, created_by, guild_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
             tag.searchAlg().id,
@@ -33,10 +33,11 @@ object TagManager: DatabaseHook {
         ).single<Int>()
 
         tag.id = id
+        tags[id] = tag
     }
 
     suspend fun remove(tag: Tag) {
-        tags.remove(tag)
+        tag.id?.let { tags.remove(it) }
         iron.prepare(
             "UPDATE tags SET deleted_at = ? WHERE id = ?",
             System.currentTimeMillis(),
@@ -45,11 +46,11 @@ object TagManager: DatabaseHook {
     }
 
     fun get(id: Int): Tag? {
-        return tags.firstOrNull { it.id == id }
+        return tags[id]
     }
 
     fun getTags(guild: String): List<Tag> {
-        return tags.filter { it.guildId == guild || it.guildId == null }
+        return tags.values.filter { it.guildId == guild || it.guildId == null }
     }
 
     suspend fun fetchAll(): List<Tag> {
@@ -60,8 +61,7 @@ object TagManager: DatabaseHook {
         if (updateTime) tag.updatedAt = System.currentTimeMillis()
         if (updateLastUsed) tag.lastUsed = System.currentTimeMillis()
 
-        this.tags.removeIf { it.id == tag.id }
-        this.tags.add(tag)
+        tag.id?.let { this.tags[it] = tag }
 
         iron.prepare(
             """
