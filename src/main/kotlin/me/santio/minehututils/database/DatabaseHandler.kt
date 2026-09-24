@@ -49,7 +49,7 @@ object DatabaseHandler {
 
         iron.prepare(
             """
-                INSERT INTO settings(guild_id, marketplace_channel, marketplace_cooldown, lockdown_role) 
+                INSERT OR IGNORE INTO settings(guild_id, marketplace_channel, marketplace_cooldown, lockdown_role) 
                 VALUES (?, ?, ?, ?)
             """.trimIndent(),
             settings.guildId,
@@ -77,7 +77,7 @@ object DatabaseHandler {
 
         iron.prepare(
             """
-                INSERT INTO guild_data(guild_id, sticky_message) 
+                INSERT OR IGNORE INTO guild_data(guild_id, sticky_message) 
                 VALUES (?, ?)
             """.trimIndent(),
             data.guildId,

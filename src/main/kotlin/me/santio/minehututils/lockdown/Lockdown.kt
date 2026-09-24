@@ -18,6 +18,7 @@ import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildChannel
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The lockdown manager for handling the locking of channels and state. In case a channel was locked
@@ -27,7 +28,7 @@ import net.dv8tion.jda.api.exceptions.InsufficientPermissionException
  */
 object Lockdown: DatabaseHook {
 
-    private val lockdownChannels = mutableListOf<LockdownChannel>()
+    private val lockdownChannels = CopyOnWriteArrayList<LockdownChannel>()
     private val lockdownPermissions = setOf(
         Permission.MESSAGE_SEND,
         Permission.MESSAGE_SEND_IN_THREADS,

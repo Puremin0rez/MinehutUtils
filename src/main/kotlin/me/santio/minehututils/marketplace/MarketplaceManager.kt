@@ -28,6 +28,7 @@ import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
 import org.slf4j.LoggerFactory
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -41,7 +42,8 @@ object MarketplaceManager: DatabaseHook {
         RegexOption.IGNORE_CASE
     )
 
-    private val messages = mutableSetOf<MarketplaceMessage>()
+    // Read by message delete events while listings are added and cleared from other threads
+    private val messages = ConcurrentHashMap.newKeySet<MarketplaceMessage>()
 
     override suspend fun onHook() {
         messages.addAll(this.fetchAll())

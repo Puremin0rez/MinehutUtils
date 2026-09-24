@@ -25,8 +25,11 @@ import org.slf4j.LoggerFactory
 object Skript {
 
     private val logger = LoggerFactory.getLogger(Skript::class.java)
-    private val syntaxList = mutableListOf<SkriptSyntax>()
-    private val exampleList = mutableListOf<SkriptExample>()
+    // Replaced wholesale on refresh so searches never see a half-updated list
+    @Volatile
+    private var syntaxList = listOf<SkriptSyntax>()
+    @Volatile
+    private var exampleList = listOf<SkriptExample>()
 
     private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -68,12 +71,9 @@ object Skript {
                 return@launch
             }
 
-            syntaxList.clear()
-            syntaxList.addAll(
-                list
-                    .sortedBy { it.title }
-                    .onEach { it.title = it.title.titlecase() }
-            )
+            syntaxList = list
+                .sortedBy { it.title }
+                .onEach { it.title = it.title.titlecase() }
 
             // Fetch example list
             val examples = httpClient.get("syntaxexample")
@@ -85,8 +85,7 @@ object Skript {
                 return@launch
             }
 
-            exampleList.clear()
-            exampleList.addAll(examples)
+            exampleList = examples
         }
     }
 
