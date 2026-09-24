@@ -51,7 +51,7 @@ object Syntax {
         }
 
         fun endColor(text: Char) {
-            colorHistory.removeLast()
+            colorHistory.removeLastOrNull() // Patterns from SkriptHub aren't always balanced
             val color = colorHistory.lastOrNull() ?: "\u001b[0m"
             result.append(text + color)
         }
