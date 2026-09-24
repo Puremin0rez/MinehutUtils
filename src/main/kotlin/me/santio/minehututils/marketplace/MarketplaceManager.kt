@@ -37,7 +37,7 @@ object MarketplaceManager: DatabaseHook {
     private val logger = LoggerFactory.getLogger(MarketplaceManager::class.java)
 
     private val INVITE_REGEX = Regex(
-        "(https?://)?(www\\.)?((discordapp\\.com/invite)|(discord\\.gg))/(\\w+)",
+        "(https?://)?(www\\.)?((discord(app)?\\.com/invite)|(discord\\.gg))/(\\w+)",
         RegexOption.IGNORE_CASE
     )
 
