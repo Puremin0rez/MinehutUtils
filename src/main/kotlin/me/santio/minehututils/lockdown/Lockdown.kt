@@ -4,6 +4,7 @@ import com.google.auto.service.AutoService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.santio.minehututils.bot
+import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.LockdownChannel
@@ -97,56 +98,58 @@ object Lockdown: DatabaseHook {
      * Lock or unlock a channel
      * @param channel The text channel to lock or unlock
      * @param lock Whether to lock or unlock the channel
+     * @return A warning for the moderator if the channel was changed but the notice couldn't be posted
      */
-    suspend fun lock(channel: StandardGuildChannel, lock: Boolean, reason: String? = null) {
+    suspend fun lock(channel: StandardGuildChannel, lock: Boolean, reason: String? = null): String? {
         val permissions = getPermissionOverride(channel.guild, channel)
         val channels = getLockdownChannels(channel.guild.id)
 
         if (channel.id !in channels) error("Attempted to lockdown a channel that I shouldn't have tried to.")
 
         if (lock && !permissions.denied.contains(Permission.MESSAGE_SEND)) {
-            fun lock() {
-                permissions.manager.setDenied(
-                    permissions.denied + lockdownPermissions
-                ).queue() // Explicitly deny the @everyone role from speaking
-            }
+            val manager = permissions.manager // Fails early if we can't change the channel's permissions
+            var warning: String? = null
 
+            // Post the notice before locking, as locking could also stop the bot from speaking
             if (channel is TextChannel) {
-                channel.sendMessageEmbeds(
-                    EmbedFactory.default(
-                        """
+                val notice = EmbedFactory.default(
+                    """
                         :lock: The channel has been locked by a moderator.
                         
                         ${reason ?: ""}
                         """.trim()
-                    ).build()
-                ).queue {
-                    lock()
-                }
+                ).build()
 
-                return
+                runCatching { channel.sendMessageEmbeds(notice).await() }
+                    .onFailure { warning = "The channel was locked, but I couldn't post the lock notice." }
             }
 
-            lock()
+            // Explicitly deny the @everyone role from speaking
+            manager.setDenied(permissions.denied + lockdownPermissions).await()
+            return warning
         } else if (!lock && permissions.denied.contains(Permission.MESSAGE_SEND)) {
             // Default to the guild default, cleaning up our mess
-            permissions.manager.clear(lockdownPermissions).queue()
+            permissions.manager.clear(lockdownPermissions).await()
 
             if (channel is TextChannel) {
-                // If our message was the last message in the channel, delete it, otherwise we'll send a new one
+                // If our message was the last message in the channel, delete it, otherwise we'll send a new one.
+                // The last message may have been deleted since, in which case there's nothing to clean up.
                 val lastMessage = channel.latestMessageId.takeIf { it != "0" }
-                    ?.let { channel.retrieveMessageById(it).complete() }
+                    ?.let { runCatching { channel.retrieveMessageById(it).await() }.getOrNull() }
 
-                if (lastMessage?.author?.id == bot.selfUser.id) {
-                    lastMessage.delete().queue()
-                } else {
-                    channel.sendMessageEmbeds(EmbedFactory.default(
-                        ":unlock: The channel has been unlocked by a moderator.",
-                    ).build()).queue()
-                }
+                return runCatching {
+                    if (lastMessage?.author?.id == bot.selfUser.id) {
+                        lastMessage.delete().queue()
+                    } else {
+                        channel.sendMessageEmbeds(EmbedFactory.default(
+                            ":unlock: The channel has been unlocked by a moderator.",
+                        ).build()).queue()
+                    }
+                }.exceptionOrNull()?.let { "The channel was unlocked, but I couldn't post the unlock notice." }
             }
-
         }
+
+        return null
     }
 
     suspend fun lockAll(guild: String, lock: Boolean, reason: String? = null): Set<String> {
