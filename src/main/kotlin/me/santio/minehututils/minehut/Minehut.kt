@@ -187,7 +187,9 @@ object Minehut {
             Service.PROXY to State.ONLINE,
         )
 
-        players().apply {
+        runCatching { players() }.onFailure {
+            logger.warn("Failed to fetch the player distribution for the status check: {}", it.toString())
+        }.getOrNull().apply {
             if (this == null) {
                 status[Service.API] = State.OFFLINE
                 return@apply
@@ -201,7 +203,9 @@ object Minehut {
         }
 
         for (service in listOf(Service.PROXY, Service.BEDROCK)) {
-            ping(service).apply {
+            runCatching { ping(service) }.onFailure {
+                logger.warn("Failed to ping {} for the status check: {}", service, it.toString())
+            }.getOrNull().apply {
                 when {
                     this == null -> status[service] = State.FAILED
                     !online && (players == null || players.online == 0) -> status[service] = State.OFFLINE
