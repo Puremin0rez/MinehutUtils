@@ -129,7 +129,21 @@ object Lockdown: DatabaseHook {
             return warning
         } else if (!lock && permissions.denied.contains(Permission.MESSAGE_SEND)) {
             // Default to the guild default, cleaning up our mess
-            permissions.manager.clear(lockdownPermissions).await()
+            runCatching { permissions.manager.clear(lockdownPermissions) }.fold(
+                { it.await() },
+                { err ->
+                    // Locking also removed MESSAGE_SEND from the bot in this channel, and PermissionOverrideAction
+                    // refuses to change permissions the bot doesn't currently have there, even though Discord allows
+                    // it. The channel manager only checks the permissions that are kept, so retry through it.
+                    if (err !is InsufficientPermissionException || err.permission != Permission.MANAGE_PERMISSIONS) throw err
+
+                    channel.manager.putPermissionOverride(
+                        permissions.permissionHolder ?: throw err,
+                        permissions.allowed,
+                        permissions.denied - lockdownPermissions
+                    ).await()
+                }
+            )
 
             if (channel is TextChannel) {
                 // If our message was the last message in the channel, delete it, otherwise we'll send a new one.
