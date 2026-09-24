@@ -132,7 +132,7 @@ class TagCommand : SlashCommand {
 
     private suspend fun deleteTag(event: SlashCommandInteractionEvent) {
         val id = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(id.toInt()) ?: error("Tag not found")
+        val tag = TagManager.get(id.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
 
         TagManager.remove(tag)
 
@@ -172,7 +172,7 @@ class TagCommand : SlashCommand {
 
     private suspend fun editTag(event: SlashCommandInteractionEvent) {
         val tagId = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(tagId.toInt()) ?: error("Tag not found")
+        val tag = TagManager.get(tagId.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
         val global = event.getOption("global")?.asBoolean == true
         val type = event.getOption("type")?.asString ?: tag.searchAlg().id
 
@@ -218,7 +218,7 @@ class TagCommand : SlashCommand {
 
     private fun getTagInfo(event: SlashCommandInteractionEvent) {
         val tagId = event.getOption("id")?.asString ?: error("Tag id not provided")
-        val tag = TagManager.get(tagId.toInt()) ?: error("Tag not found")
+        val tag = TagManager.get(tagId.toIntOrNull() ?: error("Tag not found")) ?: error("Tag not found")
 
         event.replyEmbeds(
             EmbedFactory.default(
