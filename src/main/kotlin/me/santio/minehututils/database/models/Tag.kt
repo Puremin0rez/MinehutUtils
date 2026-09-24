@@ -5,6 +5,7 @@ import gg.ingot.iron.strategies.NamingStrategy
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.resolvers.EmojiResolver
 import me.santio.minehututils.tags.SearchAlgorithm
+import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
@@ -76,7 +77,10 @@ data class Tag(
      * @param message The message to send the tag to
      */
     fun send(message: Message, silent: Boolean = false) {
-        if (silent) message.delete().queue()
+        // Deleting someone else's message needs Manage Messages, without it we still reply
+        if (silent && message.guild.selfMember.hasPermission(message.guildChannel, Permission.MESSAGE_MANAGE)) {
+            message.delete().queue()
+        }
         
         val lines = body.lines().toMutableList()
         val buttons = mutableListOf<Button>()
@@ -103,15 +107,14 @@ data class Tag(
             buttons.add(button)
         }
 
-        val lastLine = lines.lastOrNull() ?: return
+        // A body made only of buttons has no lines left, but should still be sent
+        val lastLine = lines.lastOrNull()
         var image: URL? = null
 
-        runCatching {
+        // The last line is used as the image if it's a URL, anything else is just text
+        if (lastLine != null) runCatching {
             image = URI.create(lastLine).toURL()
             lines.remove(lastLine)
-        }.onFailure { result ->
-            if (result is IllegalArgumentException) return@onFailure
-            logger.error("Failed to get image uri: $lastLine", result)
         }
 
         val embed = EmbedFactory.default(lines.joinToString("\n"))
