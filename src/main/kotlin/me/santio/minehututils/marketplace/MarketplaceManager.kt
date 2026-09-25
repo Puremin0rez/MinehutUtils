@@ -46,10 +46,10 @@ object MarketplaceManager: DatabaseHook {
     )
 
     // Read by message delete events while listings are added and cleared from other threads
-    private val messages = ConcurrentHashMap.newKeySet<MarketplaceMessage>()
+    private val messages = ConcurrentHashMap<String, MarketplaceMessage>()
 
     override suspend fun onHook() {
-        messages.addAll(this.fetchAll())
+        this.fetchAll().forEach { messages[it.id] = it }
     }
 
     suspend fun fetchAll(): List<MarketplaceMessage> {
@@ -57,7 +57,7 @@ object MarketplaceManager: DatabaseHook {
     }
 
     fun getListing(id: String): MarketplaceMessage? {
-        return messages.firstOrNull { it.id == id }
+        return messages[id]
     }
 
     suspend fun getStickyMessage(guild: Guild): Message? {
@@ -69,7 +69,7 @@ object MarketplaceManager: DatabaseHook {
     }
 
     suspend fun add(message: MarketplaceMessage) {
-        messages.add(message)
+        messages[message.id] = message
 
         iron.prepare(
             "INSERT INTO marketplace_logs(id, posted_by, type, title, content, posted_at) VALUES (:id, :postedBy, :type, :title, :content, :postedAt)",
@@ -266,7 +266,7 @@ object MarketplaceManager: DatabaseHook {
     fun clearOldMessages() {
         scope.launch(exceptionHandler) {
             val now = System.currentTimeMillis()
-            messages.removeIf { now - it.postedAt > 604800000 } // 7 days
+            messages.values.removeIf { now - it.postedAt > 604800000 } // 7 days
             iron.prepare("DELETE FROM marketplace_logs WHERE posted_at < ?", now - 604800000)
         }
     }
