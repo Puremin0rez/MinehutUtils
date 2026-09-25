@@ -64,7 +64,7 @@ object CommandManager {
                 result.isNetworkFailure() -> {
                     logger.warn("A request failed while running '{}': {}", event.commandString, result.toString())
                     replyError(event, EmbedFactory.error(
-                        "Couldn't reach Minehut's API, please try again shortly.",
+                        "A network request failed, please try again shortly.",
                         event.guild
                     ).build())
                 }
