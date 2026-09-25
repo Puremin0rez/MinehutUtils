@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import me.santio.minehututils.commands.CommandLoader
 import me.santio.minehututils.commands.CommandManager
+import me.santio.minehututils.cooldown.CooldownManager
 import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.marketplace.MarketplaceListener
@@ -103,6 +104,8 @@ suspend fun main() {
     timer.schedule(0, 1000 * 5) { // 5 seconds
         StickyManager.refreshSticky()
     }
+
+    CooldownManager.start()
 
     // Attach shutdown hooks
     Runtime.getRuntime().addShutdownHook(Thread {
