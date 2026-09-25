@@ -3,6 +3,8 @@ package me.santio.minehututils.sticky
 import dev.minn.jda.ktx.coroutines.await
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import me.santio.minehututils.bot
 import me.santio.minehututils.commands.CommandLoader.logger
 import me.santio.minehututils.coroutines.exceptionHandler
@@ -21,12 +23,14 @@ object StickyManager {
 
     data class StickyMessage(
         val channelId: String,
-        var message: String,
-        var lastMessageId: String? = null,
-        var active: Boolean = false
+        @Volatile var message: String,
+        @Volatile var lastMessageId: String? = null,
+        @Volatile var active: Boolean = false
     )
 
     private val stickyMessages = ConcurrentHashMap<String, StickyMessage>()
+
+    private val refreshLock = Mutex()
 
     /**
      * Start stickying a message
@@ -115,39 +119,57 @@ object StickyManager {
      */
     fun refreshSticky(force: Boolean = false) {
         scope.launch(exceptionHandler) {
-            stickyMessages.values.forEach { sticky ->
-
-                if (!sticky.active) return@forEach
-                val channel = bot.getGuildChannelById(sticky.channelId) as? MessageChannel ?: return@forEach
-
-                if (!force) {
-                    // A channel we can no longer read shouldn't stop the other stickies from refreshing
-                    val lastMessage = runCatching { channel.history.retrievePast(1).await().firstOrNull() }
-                        .getOrElse {
-                            if (it is CancellationException) throw it
-                            logger.debug("Skipping sticky in {}: {}", sticky.channelId, it.toString())
-                            return@forEach
-                        }
-                    if (lastMessage?.id == sticky.lastMessageId) return@forEach
+            if (force) refreshLock.withLock { refresh(true) }
+            else if (refreshLock.tryLock()) {
+                try {
+                    refresh(false)
+                } finally {
+                    refreshLock.unlock()
                 }
-
-                runCatching {
-                    sticky.lastMessageId?.let { id ->
-                        channel.deleteMessageById(id).await()
-                    }
-                }.onFailure { err ->
-                    logger.error("Failed to delete the last sticky message", err)
-                }
-
-                val embed = runCatching {
-                    channel.sendMessageEmbeds(getEmbed(channel.id)).await()
-                }.getOrElse { err ->
-                    logger.error("Failed to post sticky message", err)
-                    null
-                } ?: return@forEach
-
-                sticky.lastMessageId = embed.id
             }
+        }
+    }
+
+    fun onDelete(channelId: String, messageId: String) {
+        val sticky = stickyMessages[channelId] ?: return
+        if (sticky.lastMessageId == messageId) sticky.lastMessageId = null
+    }
+
+    private suspend fun refresh(force: Boolean) {
+        stickyMessages.values.forEach { sticky ->
+
+            if (!sticky.active) return@forEach
+            val channel = bot.getGuildChannelById(sticky.channelId) as? MessageChannel ?: return@forEach
+
+            if (!force) {
+                if (channel.latestMessageId == sticky.lastMessageId) return@forEach
+
+                // A channel we can no longer read shouldn't stop the other stickies from refreshing
+                val lastMessage = runCatching { channel.history.retrievePast(1).await().firstOrNull() }
+                    .getOrElse {
+                        if (it is CancellationException) throw it
+                        logger.debug("Skipping sticky in {}: {}", sticky.channelId, it.toString())
+                        return@forEach
+                    }
+                if (sticky.lastMessageId != null && lastMessage?.id == sticky.lastMessageId) return@forEach
+            }
+
+            runCatching {
+                sticky.lastMessageId?.let { id ->
+                    channel.deleteMessageById(id).await()
+                }
+            }.onFailure { err ->
+                logger.error("Failed to delete the last sticky message", err)
+            }
+
+            val embed = runCatching {
+                channel.sendMessageEmbeds(getEmbed(channel.id)).await()
+            }.getOrElse { err ->
+                logger.error("Failed to post sticky message", err)
+                null
+            } ?: return@forEach
+
+            sticky.lastMessageId = embed.id
         }
     }
 }
