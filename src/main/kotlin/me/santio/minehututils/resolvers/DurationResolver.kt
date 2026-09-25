@@ -20,25 +20,29 @@ object DurationResolver {
         val parts = Regex("(\\d+)([smhd])")
             .findAll(input)
             .map { it.groupValues.drop(1) }
-            .map { Pair(it[0].toLong(), it[1].lowercase()) }
+            .map { Pair(it[0].toLongOrNull(), it[1].lowercase()) }
             .toList()
+
+        if (parts.any { it.first == null }) return null // Too large to be a duration
 
         if (parts.isEmpty()) return null
         var duration = Duration.ZERO
 
         for (part in parts) {
-            val amount = part.first
+            val amount = part.first!!
             val unit = part.second
 
-            duration = duration.plus(
-                when (unit) {
-                    "s" -> Duration.ofSeconds(amount)
-                    "m" -> Duration.ofMinutes(amount)
-                    "h" -> Duration.ofHours(amount)
-                    "d" -> Duration.ofDays(amount)
-                    else -> return null
-                }
-            )
+            duration = runCatching {
+                duration.plus(
+                    when (unit) {
+                        "s" -> Duration.ofSeconds(amount)
+                        "m" -> Duration.ofMinutes(amount)
+                        "h" -> Duration.ofHours(amount)
+                        "d" -> Duration.ofDays(amount)
+                        else -> return null
+                    }
+                )
+            }.getOrNull() ?: return null // Overflowed
         }
 
         return duration

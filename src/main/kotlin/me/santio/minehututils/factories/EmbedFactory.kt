@@ -4,12 +4,23 @@ import me.santio.minehututils.factories.EmbedFactory.exception
 import me.santio.minehututils.resolvers.EmojiResolver
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.Guild
+import net.dv8tion.jda.api.entities.MessageEmbed
 
 /**
  * The factory for creating embed messages that the bot sends.
  * @see EmbedBuilder
  */
 object EmbedFactory {
+
+    /**
+     * Shortens text to Discord's embed description limit, long user content (tags, stickies, logs)
+     * would otherwise make the embed fail to build.
+     */
+    private fun fit(text: String): String {
+        if (text.length <= MessageEmbed.DESCRIPTION_MAX_LENGTH) return text
+        val cut = text.take(MessageEmbed.DESCRIPTION_MAX_LENGTH - 1)
+        return cut.dropLastWhile { it.isHighSurrogate() } + "…" // Don't split an emoji in half
+    }
 
     /**
      * The base embed that all embeds are based off of.
@@ -32,7 +43,7 @@ object EmbedFactory {
      */
     fun default(text: String, block: (EmbedBuilder) -> Unit = {}): EmbedBuilder {
         return baseEmbed {
-            it.setDescription(text)
+            it.setDescription(fit(text))
             block(it)
         }
     }
@@ -45,7 +56,7 @@ object EmbedFactory {
      */
     fun success(text: String, guild: Guild?, block: (EmbedBuilder) -> Unit = {}): EmbedBuilder {
         return baseEmbed {
-            it.setDescription("${EmojiResolver.yes(guild)?.formatted} $text")
+            it.setDescription(fit("${EmojiResolver.yes(guild)?.formatted} $text"))
             it.setColor(0x6efa61)
             block(it)
         }
@@ -59,7 +70,7 @@ object EmbedFactory {
      */
     fun warning(text: String, block: (EmbedBuilder) -> Unit = {}): EmbedBuilder {
         return baseEmbed {
-            it.setDescription("${EmojiResolver.warning().formatted} $text")
+            it.setDescription(fit("${EmojiResolver.warning().formatted} $text"))
             it.setColor(0xfaba61)
             block(it)
         }
@@ -74,7 +85,7 @@ object EmbedFactory {
      */
     fun error(text: String, guild: Guild?, block: (EmbedBuilder) -> Unit = {}): EmbedBuilder {
         return baseEmbed {
-            it.setDescription("${EmojiResolver.no(guild)?.formatted} $text")
+            it.setDescription(fit("${EmojiResolver.no(guild)?.formatted} $text"))
             it.setColor(0xff6961)
             block(it)
         }
@@ -90,13 +101,13 @@ object EmbedFactory {
      */
     fun exception(text: String, guild: Guild?, exception: Throwable, block: (EmbedBuilder) -> Unit = {}): EmbedBuilder {
         return baseEmbed {
-            it.setDescription(
+            it.setDescription(fit(
                 """
             | ${EmojiResolver.no(guild)?.formatted} $text
             | ```diff
             | - ${exception::class.java.simpleName}: ${exception.message}```
             """.trimMargin()
-            )
+            ))
             it.setColor(0xff6961)
             block(it)
         }

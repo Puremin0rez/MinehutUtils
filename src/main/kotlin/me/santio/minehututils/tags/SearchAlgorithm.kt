@@ -12,12 +12,13 @@ enum class SearchAlgorithm(
         regex?.let { return@let query.matches(it) } == true
     }, "Enter the regex value (ex: [A-Z]{3})"),
 
+    // Blank segments (from "a|" or "a||b") would otherwise match every message
     CONTAINS("contains", { query ->
-        searchValue.split('|').any { query.contains(it, ignoreCase = true) }
+        searchValue.split('|').filter { it.isNotBlank() }.any { query.contains(it, ignoreCase = true) }
     }, "Enter the search value (ex: bedrock|mobile)"),
 
     EXACT("exact", { query ->
-        searchValue.split('|').any { query.equals(it, ignoreCase = true) }
+        searchValue.split('|').filter { it.isNotBlank() }.any { query.equals(it, ignoreCase = true) }
     }, "Enter the search value (ex: how do I join?)"),
     DISABLED("disabled", { false }, "Enter a placeholder value (ex: !downtime)"),
     ;

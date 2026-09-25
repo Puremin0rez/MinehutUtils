@@ -5,6 +5,7 @@ import dev.minn.jda.ktx.interactions.commands.Command
 import dev.minn.jda.ktx.interactions.commands.Option
 import dev.minn.jda.ktx.interactions.components.getOption
 import me.santio.minehututils.commands.SlashCommand
+import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.logger.GuildLogger
 import me.santio.minehututils.resolvers.DurationResolver
@@ -35,8 +36,12 @@ class SlowModeCommand : SlashCommand {
         val time = event.getOption<String>("duration") ?: error("No duration was provided")
         val duration = DurationResolver.from(time) ?: error("Invalid duration provided")
 
-        val seconds = min(duration.toSeconds().toInt(), ISlowmodeChannel.MAX_SLOWMODE)
-        event.channel.asTextChannel().manager.setSlowmode(seconds).queue()
+        // Text, voice, forum channels and threads all support slowmode
+        val channel = event.channel as? ISlowmodeChannel ?: error("Slowmode can't be set in this channel")
+
+        val seconds = min(duration.toSeconds(), ISlowmodeChannel.MAX_SLOWMODE.toLong()).toInt()
+        event.deferReply(true).await()
+        channel.manager.setSlowmode(seconds).await()
         val setDuration = seconds.seconds
 
         GuildLogger.of(event.guild!!).log(
@@ -46,12 +51,12 @@ class SlowModeCommand : SlashCommand {
             ":package: Channel: ${event.channel.asMention} *(${event.channel.name} - ${event.channel.id})*",
         ).withContext(event).titled("Slowmode Modified").post()
 
-        event.replyEmbeds(
+        event.hook.editOriginalEmbeds(
             EmbedFactory.success(
                 "Set the slowmode for ${event.channel.asMention} to `${DurationResolver.pretty(setDuration)}`",
                 event.guild
             ).build()
-        ).setEphemeral(true).queue()
+        ).queue()
     }
 
 }

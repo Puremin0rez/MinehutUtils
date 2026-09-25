@@ -3,10 +3,11 @@ package me.santio.minehututils.commands.impl
 import com.google.auto.service.AutoService
 import dev.minn.jda.ktx.interactions.commands.Command
 import me.santio.minehututils.commands.SlashCommand
+import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.ext.formatted
-import me.santio.minehututils.ext.reply
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.minehut.Minehut
+import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.interactions.InteractionContextType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
@@ -21,19 +22,42 @@ class NetworkCommand : SlashCommand {
         }
     }
 
+    /**
+     * Replaces the public "thinking" message with an ephemeral error
+     */
+    private suspend fun fail(event: SlashCommandInteractionEvent, embed: EmbedBuilder) {
+        runCatching { event.hook.deleteOriginal().await() }
+        event.hook.sendMessageEmbeds(embed.build()).setEphemeral(true).queue()
+    }
+
+    /**
+     * Runs an API request, removing the public "thinking" message if it throws so the
+     * command manager can report the failure ephemerally
+     */
+    private suspend fun <T> request(event: SlashCommandInteractionEvent, block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (e: Exception) {
+            runCatching { event.hook.deleteOriginal().await() }
+            throw e
+        }
+    }
+
     override suspend fun execute(event: SlashCommandInteractionEvent) {
-        val playerDist = Minehut.players() ?: run {
-            event.reply(EmbedFactory.error("Failed to fetch player statistics", event.guild)).setEphemeral(true).queue()
+        // The Minehut API can take longer than Discord's 3 second window to respond
+        event.deferReply().await()
+
+        val playerDist = request(event) { Minehut.players() } ?: run {
+            fail(event, EmbedFactory.error("Failed to fetch player statistics", event.guild))
             return
         }
 
-        val status = Minehut.network() ?: run {
-            event.reply(EmbedFactory.error("Failed to fetch network statistics", event.guild)).setEphemeral(true)
-                .queue()
+        val status = request(event) { Minehut.network() } ?: run {
+            fail(event, EmbedFactory.error("Failed to fetch network statistics", event.guild))
             return
         }
 
-        event.reply(
+        event.hook.editOriginalEmbeds(
             EmbedFactory.default(
                 """
             | :bar_chart: **Network Stats**
@@ -47,7 +71,7 @@ class NetworkCommand : SlashCommand {
             |
             | *View player statistics at [Minehut Track](https://track.gamersafer.systems/)*
             """.trimMargin()
-            )
+            ).build()
         ).queue()
     }
 

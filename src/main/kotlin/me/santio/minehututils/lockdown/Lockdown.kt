@@ -1,9 +1,11 @@
 package me.santio.minehututils.lockdown
 
 import com.google.auto.service.AutoService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.santio.minehututils.bot
+import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.LockdownChannel
@@ -17,6 +19,7 @@ import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildChannel
 import net.dv8tion.jda.api.exceptions.InsufficientPermissionException
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The lockdown manager for handling the locking of channels and state. In case a channel was locked
@@ -26,7 +29,7 @@ import net.dv8tion.jda.api.exceptions.InsufficientPermissionException
  */
 object Lockdown: DatabaseHook {
 
-    private val lockdownChannels = mutableListOf<LockdownChannel>()
+    private val lockdownChannels = CopyOnWriteArrayList<LockdownChannel>()
     private val lockdownPermissions = setOf(
         Permission.MESSAGE_SEND,
         Permission.MESSAGE_SEND_IN_THREADS,
@@ -97,56 +100,80 @@ object Lockdown: DatabaseHook {
      * Lock or unlock a channel
      * @param channel The text channel to lock or unlock
      * @param lock Whether to lock or unlock the channel
+     * @return A warning for the moderator if the channel was changed but the notice couldn't be posted
      */
-    suspend fun lock(channel: StandardGuildChannel, lock: Boolean, reason: String? = null) {
+    suspend fun lock(channel: StandardGuildChannel, lock: Boolean, reason: String? = null): String? {
         val permissions = getPermissionOverride(channel.guild, channel)
         val channels = getLockdownChannels(channel.guild.id)
 
         if (channel.id !in channels) error("Attempted to lockdown a channel that I shouldn't have tried to.")
 
         if (lock && !permissions.denied.contains(Permission.MESSAGE_SEND)) {
-            fun lock() {
-                permissions.manager.setDenied(
-                    permissions.denied + lockdownPermissions
-                ).queue() // Explicitly deny the @everyone role from speaking
-            }
+            val manager = permissions.manager // Fails early if we can't change the channel's permissions
+            var warning: String? = null
 
+            // Post the notice before locking, as locking could also stop the bot from speaking
             if (channel is TextChannel) {
-                channel.sendMessageEmbeds(
-                    EmbedFactory.default(
-                        """
+                val notice = EmbedFactory.default(
+                    """
                         :lock: The channel has been locked by a moderator.
                         
                         ${reason ?: ""}
                         """.trim()
-                    ).build()
-                ).queue {
-                    lock()
-                }
+                ).build()
 
-                return
+                runCatching { channel.sendMessageEmbeds(notice).await() }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        warning = "The channel was locked, but I couldn't post the lock notice."
+                    }
             }
 
-            lock()
+            // Explicitly deny the @everyone role from speaking
+            manager.setDenied(permissions.denied + lockdownPermissions).await()
+            return warning
         } else if (!lock && permissions.denied.contains(Permission.MESSAGE_SEND)) {
             // Default to the guild default, cleaning up our mess
-            permissions.manager.clear(lockdownPermissions).queue()
+            runCatching { permissions.manager.clear(lockdownPermissions) }.fold(
+                { it.await() },
+                { err ->
+                    // Locking also removed MESSAGE_SEND from the bot in this channel, and PermissionOverrideAction
+                    // refuses to change permissions the bot doesn't currently have there, even though Discord allows
+                    // it. The channel manager only checks the permissions that are kept, so retry through it.
+                    if (err !is InsufficientPermissionException || err.permission != Permission.MANAGE_PERMISSIONS) throw err
+
+                    channel.manager.putPermissionOverride(
+                        permissions.permissionHolder ?: throw err,
+                        permissions.allowed,
+                        permissions.denied - lockdownPermissions
+                    ).await()
+                }
+            )
 
             if (channel is TextChannel) {
-                // If our message was the last message in the channel, delete it, otherwise we'll send a new one
+                // If our message was the last message in the channel, delete it, otherwise we'll send a new one.
+                // The last message may have been deleted since, in which case there's nothing to clean up.
                 val lastMessage = channel.latestMessageId.takeIf { it != "0" }
-                    ?.let { channel.retrieveMessageById(it).complete() }
+                    ?.let { runCatching { channel.retrieveMessageById(it).await() }.getOrNull() }
 
-                if (lastMessage?.author?.id == bot.selfUser.id) {
-                    lastMessage.delete().queue()
-                } else {
-                    channel.sendMessageEmbeds(EmbedFactory.default(
-                        ":unlock: The channel has been unlocked by a moderator.",
-                    ).build()).queue()
+                val deleting = lastMessage?.author?.id == bot.selfUser.id
+                return runCatching {
+                    if (deleting) {
+                        lastMessage!!.delete().await()
+                    } else {
+                        channel.sendMessageEmbeds(EmbedFactory.default(
+                            ":unlock: The channel has been unlocked by a moderator.",
+                        ).build()).await()
+                    }
+                }.exceptionOrNull()?.let {
+                    if (it is CancellationException) throw it
+                    if (deleting) "The channel was unlocked, but I couldn't remove the lock notice."
+                    else "The channel was unlocked, but I couldn't post the unlock notice."
                 }
             }
-
         }
+
+        return null
     }
 
     suspend fun lockAll(guild: String, lock: Boolean, reason: String? = null): Set<String> {

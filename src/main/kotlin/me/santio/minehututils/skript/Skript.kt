@@ -9,6 +9,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.gson.*
 import kotlinx.coroutines.launch
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.scope
 import me.santio.minehututils.skript.models.SkriptExample
 import me.santio.minehututils.skript.models.SkriptSyntax
@@ -24,8 +25,11 @@ import org.slf4j.LoggerFactory
 object Skript {
 
     private val logger = LoggerFactory.getLogger(Skript::class.java)
-    private val syntaxList = mutableListOf<SkriptSyntax>()
-    private val exampleList = mutableListOf<SkriptExample>()
+    // Replaced wholesale on refresh so searches never see a half-updated list
+    @Volatile
+    private var syntaxList = listOf<SkriptSyntax>()
+    @Volatile
+    private var exampleList = listOf<SkriptExample>()
 
     private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
@@ -56,7 +60,7 @@ object Skript {
     fun refreshData() {
         if (env("SKRIPTHUB_KEY") == null) return
 
-        scope.launch {
+        scope.launch(exceptionHandler) {
             // Fetch syntax list
             val list = httpClient.get("syntax")
                 .takeIf { it.status.isSuccess() }
@@ -67,12 +71,9 @@ object Skript {
                 return@launch
             }
 
-            syntaxList.clear()
-            syntaxList.addAll(
-                list
-                    .sortedBy { it.title }
-                    .onEach { it.title = it.title.titlecase() }
-            )
+            syntaxList = list
+                .sortedBy { it.title }
+                .onEach { it.title = it.title.titlecase() }
 
             // Fetch example list
             val examples = httpClient.get("syntaxexample")
@@ -84,8 +85,7 @@ object Skript {
                 return@launch
             }
 
-            exampleList.clear()
-            exampleList.addAll(examples)
+            exampleList = examples
         }
     }
 

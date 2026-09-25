@@ -8,6 +8,7 @@ import me.santio.minehututils.bot
 import me.santio.minehututils.cooldown.Cooldown
 import me.santio.minehututils.cooldown.CooldownManager
 import me.santio.minehututils.coroutines.await
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.MarketplaceMessage
@@ -22,21 +23,29 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
+import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.interactions.callbacks.IModalCallback
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
+import net.dv8tion.jda.api.requests.ErrorResponse
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
+import org.slf4j.LoggerFactory
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 object MarketplaceManager: DatabaseHook {
 
+    private val logger = LoggerFactory.getLogger(MarketplaceManager::class.java)
+
     private val INVITE_REGEX = Regex(
-        "(https?://)?(www\\.)?((discordapp\\.com/invite)|(discord\\.gg))/(\\w+)",
+        "(https?://)?(www\\.)?((discord(app)?\\.com/invite)|(discord\\.gg))/(\\w+)",
         RegexOption.IGNORE_CASE
     )
 
-    private val messages = mutableSetOf<MarketplaceMessage>()
+    // Read by message delete events while listings are added and cleared from other threads
+    private val messages = ConcurrentHashMap.newKeySet<MarketplaceMessage>()
 
     override suspend fun onHook() {
         messages.addAll(this.fetchAll())
@@ -73,7 +82,8 @@ object MarketplaceManager: DatabaseHook {
 
         e.replyModal(Modal("minehut:marketplace:modal:$id", "Customize your listing") {
             short("minehut:listing:title", "The title of your listing", requiredLength = IntRange(1, 100))
-            paragraph("minehut:listing:description", "The description of your listing")
+            // Leaves room for the listing header within Discord's 4096 character embed limit
+            paragraph("minehut:listing:description", "The description of your listing", requiredLength = IntRange(1, 3800))
         }).queue()
 
         bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
@@ -108,21 +118,35 @@ object MarketplaceManager: DatabaseHook {
                 return@listener
             }
 
-            // Run in auto-mod
-            AutoModResolver.parse(it.guild!!, it.member!!, e, title, description).thenAccept { passes ->
-                if (!passes) {
-                    it.replyEmbeds(
-                        EmbedFactory.error(
-                            "Your message was caught by the filter and the request has been discarded.",
-                            it.guild!!
-                        ).build()
-                    ).setEphemeral(true).queue()
-                    return@thenAccept
-                }
+            // Acknowledge now, checking auto-mod and posting the listing can take longer than Discord allows
+            it.deferReply(true).queue()
+
+            // Run in auto-mod, if the rules can't be checked in time the listing is allowed through
+            val passes = AutoModResolver.parse(it.guild!!, it.member!!, e, title, description)
+                .completeOnTimeout(true, 2, TimeUnit.SECONDS)
+                .await()
+
+            if (!passes) {
+                it.hook.editOriginalEmbeds(
+                    EmbedFactory.error(
+                        "Your message was caught by the filter and the request has been discarded.",
+                        it.guild!!
+                    ).build()
+                ).queue()
+                return@listener
             }
 
-            postListing(type, it, settings, title, description)
+            runCatching {
+                postListing(type, it, settings, title, description)
+            }.onFailure { err -> listingFailed(it, err) }
         }
+    }
+
+    private fun listingFailed(event: ModalInteractionEvent, err: Throwable) {
+        logger.warn("Failed to post a marketplace listing: {}", err.toString())
+        event.hook.editOriginalEmbeds(
+            EmbedFactory.error("Failed to post your listing, please try again later.", event.guild!!).build()
+        ).queue()
     }
 
     fun postListing(
@@ -133,13 +157,12 @@ object MarketplaceManager: DatabaseHook {
         description: String
     ) {
         val channel = bot.getTextChannelById(settings.marketplaceChannel!!) ?: run {
-            event.replyEmbeds(
+            event.hook.editOriginalEmbeds(
                 EmbedFactory.error(
                     "Failed to find the marketplace channel, was it deleted?",
                     event.guild!!
                 ).build()
-            )
-                .setEphemeral(true).queue()
+            ).queue()
             return
         }
 
@@ -169,8 +192,10 @@ object MarketplaceManager: DatabaseHook {
 
         channel.sendMessage("Listing posted by ${event.user.asMention}")
             .addEmbeds(embed.build())
-            .queue {
-                scope.launch {
+            .queue({
+                CooldownManager.set(event.user.id, Cooldown.getMarketplaceType(type), settings.marketplaceCooldown.seconds)
+
+                scope.launch(exceptionHandler) {
                     add(MarketplaceMessage(
                         id = it.id,
                         postedBy = event.user.id,
@@ -183,7 +208,7 @@ object MarketplaceManager: DatabaseHook {
                     sendStickyEmbed(channel)
                 }
 
-                event.replyEmbeds(
+                event.hook.editOriginalEmbeds(
                     EmbedFactory.default(
                         """
                     | **Success** ${EmojiResolver.yes(event.guild)?.formatted ?: ""}
@@ -192,14 +217,16 @@ object MarketplaceManager: DatabaseHook {
                     | Check it out! :point_right: ${it.jumpUrl}
                     """.trimMargin()
                     ).build()
-                ).setEphemeral(true).queue()
-            }
-
-        CooldownManager.set(event.user.id, Cooldown.getMarketplaceType(type), settings.marketplaceCooldown.seconds)
+                ).queue()
+            }, { err -> listingFailed(event, err) })
     }
 
     suspend fun sendStickyEmbed(channel: TextChannel) {
-        getStickyMessage(channel.guild)?.delete()?.queue()
+        // The previous sticky may have been deleted by hand, that shouldn't stop a new one being posted
+        val previous = runCatching { getStickyMessage(channel.guild) }.getOrElse {
+            if (it is ErrorResponseException && it.errorResponse == ErrorResponse.UNKNOWN_MESSAGE) null else throw it
+        }
+        previous?.delete()?.queue()
 
         val offerButton = button("minehut:marketplace:post:offer", "Post an Offering", Emoji.fromFormatted("\uD83D\uDCE2"), ButtonStyle.SUCCESS)
         val requestButton = button("minehut:marketplace:post:request", "Post a Request", Emoji.fromFormatted("📝"), ButtonStyle.PRIMARY)
@@ -236,7 +263,7 @@ object MarketplaceManager: DatabaseHook {
     }
 
     fun clearOldMessages() {
-        scope.launch {
+        scope.launch(exceptionHandler) {
             val now = System.currentTimeMillis()
             messages.removeIf { now - it.postedAt > 604800000 } // 7 days
             iron.prepare("DELETE FROM marketplace_logs WHERE posted_at < ?", now - 604800000)

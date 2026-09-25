@@ -56,7 +56,7 @@ class LockdownCommand : SlashCommand {
         val locked = Lockdown.isLocked(channel)
         if (locked == lock) error("Channel is already ${if (lock) "locked" else "unlocked"}")
 
-        runCatching {
+        val warning = runCatching {
             Lockdown.lock(channel, lock, reason)
         }.getOrElse { err ->
             event.replyEmbeds(
@@ -80,7 +80,11 @@ class LockdownCommand : SlashCommand {
         ).withContext(event).titled("Channel Lockdown Changed").post()
 
         event.replyEmbeds(
-            EmbedFactory.success("Successfully ${if (lock) "locked" else "unlocked"} the channel ${channel.asMention}!", event.guild!!).build()
+            EmbedFactory.success(
+                "Successfully ${if (lock) "locked" else "unlocked"} the channel ${channel.asMention}!" +
+                    (warning?.let { "\n\n:warning: $it" } ?: ""),
+                event.guild!!
+            ).build()
         ).setEphemeral(true).queue()
     }
 

@@ -7,6 +7,7 @@ import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.serialization.gson.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,8 +19,10 @@ import me.santio.sdk.minehut.models.ListedServer
 import me.santio.sdk.minehut.models.PlayerStats
 import me.santio.sdk.minehut.models.Server
 import me.santio.sdk.minehut.models.SimpleStats
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A wrapper on unirest for accessing the Minehut API
@@ -29,7 +32,12 @@ object Minehut {
 
     private const val BASE_URL = "https://api.minehut.com"
 
+    private val logger = LoggerFactory.getLogger(Minehut::class.java)
+
+    @Volatile
     private var serverCache: List<ListedServer>? = null
+    private val refreshing = AtomicBoolean(false)
+    private var failedRefreshes = 0
     private val client = Minehut(BASE_URL)
 
     val dailyTimeLimit: Duration = Duration.ofHours(4)
@@ -45,11 +53,35 @@ object Minehut {
     }
 
     /**
-     * Refresh the server list cache
+     * Refresh the server list cache. Failures keep the previous cache, and only the first failure of an
+     * outage is logged as a warning, so an API outage doesn't produce a stack trace every 30 seconds.
      */
     fun refreshList() {
+        if (!refreshing.compareAndSet(false, true)) return // previous refresh is still running
+
         scope.launch(exceptionHandler) {
-            serverCache = servers(true)
+            try {
+                fetchServers()?.let {
+                    serverCache = it
+                    if (failedRefreshes > 0) logger.info("Server list refresh recovered after {} failed attempts", failedRefreshes)
+                    failedRefreshes = 0
+                } ?: refreshFailed("the API returned an unsuccessful response")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                refreshFailed(e.toString())
+            } finally {
+                refreshing.set(false)
+            }
+        }
+    }
+
+    private fun refreshFailed(reason: String) {
+        failedRefreshes++
+        if (failedRefreshes == 1) {
+            logger.warn("Failed to refresh the server list, keeping the cached list until it recovers: {}", reason)
+        } else {
+            logger.debug("Failed to refresh the server list ({} attempts): {}", failedRefreshes, reason)
         }
     }
 
@@ -106,19 +138,22 @@ object Minehut {
      * @return A servers model containing a list of servers along with extra information, or null if the request failed
      */
     suspend fun servers(bypassCache: Boolean = false): List<ListedServer> {
-        if (!bypassCache && serverCache != null) return serverCache!!
+        serverCache?.takeIf { !bypassCache }?.let { return it }
 
-        val servers = client.getServers(
+        // An unsuccessful response keeps the previous cache rather than replacing it with nothing
+        val servers = fetchServers() ?: return serverCache ?: emptyList()
+        serverCache = servers
+        return servers
+    }
+
+    private suspend fun fetchServers(): List<ListedServer>? {
+        return client.getServers(
             q = null,
             category = null,
             limit = null
         ).takeIf { it.success }
             ?.body()
             ?.servers
-            ?: emptyList()
-
-        serverCache = servers
-        return servers
     }
 
     /**
@@ -152,7 +187,10 @@ object Minehut {
             Service.PROXY to State.ONLINE,
         )
 
-        players().apply {
+        runCatching { players() }.onFailure {
+            if (it is CancellationException) throw it
+            logger.warn("Failed to fetch the player distribution for the status check: {}", it.toString())
+        }.getOrNull().apply {
             if (this == null) {
                 status[Service.API] = State.OFFLINE
                 return@apply
@@ -166,7 +204,10 @@ object Minehut {
         }
 
         for (service in listOf(Service.PROXY, Service.BEDROCK)) {
-            ping(service).apply {
+            runCatching { ping(service) }.onFailure {
+                if (it is CancellationException) throw it
+                logger.warn("Failed to ping {} for the status check: {}", service, it.toString())
+            }.getOrNull().apply {
                 when {
                     this == null -> status[service] = State.FAILED
                     !online && (players == null || players.online == 0) -> status[service] = State.OFFLINE

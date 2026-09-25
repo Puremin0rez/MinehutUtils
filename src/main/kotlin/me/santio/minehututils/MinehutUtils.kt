@@ -9,12 +9,14 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.sentry.Sentry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import me.santio.minehututils.commands.CommandLoader
 import me.santio.minehututils.commands.CommandManager
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.marketplace.MarketplaceListener
 import me.santio.minehututils.marketplace.MarketplaceManager
@@ -31,6 +33,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import org.slf4j.LoggerFactory
 import java.nio.file.Paths
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
@@ -118,10 +121,28 @@ private fun startHeartbeat() {
         ?: error("Unknown heartbeat resolver")
 
     val client = HttpClient(CIO) {}
+    val sending = AtomicBoolean(false)
+    var failures = 0
 
     timer.schedule(0, interval.toMillis()) {
-        scope.launch {
-            client.request(url) { method = httpMethod }
+        if (!sending.compareAndSet(false, true)) return@schedule // previous heartbeat is still running
+
+        scope.launch(exceptionHandler) {
+            try {
+                val response = client.request(url) { method = httpMethod }
+                if (!response.status.isSuccess()) error("Heartbeat returned ${response.status}")
+
+                if (failures > 0) logger.info("Heartbeat recovered after {} failed attempts", failures)
+                failures = 0
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Only warn once per outage, the heartbeat runs every few seconds
+                if (++failures == 1) logger.warn("Failed to send a heartbeat, retrying until it recovers: {}", e.toString())
+                else logger.debug("Failed to send a heartbeat ({} attempts): {}", failures, e.toString())
+            } finally {
+                sending.set(false)
+            }
         }
     }
 }

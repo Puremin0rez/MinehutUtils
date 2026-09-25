@@ -4,6 +4,7 @@ import kotlinx.coroutines.launch
 import me.santio.minehututils.bot
 import me.santio.minehututils.cooldown.Cooldown
 import me.santio.minehututils.cooldown.CooldownManager
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.logger.GuildLogger
@@ -22,7 +23,12 @@ object MarketplaceListener : ListenerAdapter() {
     override fun onButtonInteraction(event: ButtonInteractionEvent) {
         if (!event.isFromGuild) return
 
-        scope.launch {
+        // minehut:marketplace:post:<type>, other buttons are handled by their own listeners
+        if (!event.componentId.startsWith("minehut:marketplace:post:")) return
+        val type = event.componentId.substringAfter("minehut:marketplace:post:")
+        if (type != "offer" && type != "request") return
+
+        scope.launch(exceptionHandler) {
             val settings = DatabaseHandler.getSettings(event.guild!!.id)
             if (settings.marketplaceChannel == null || settings.marketplaceCooldown < 0L) {
                 event.replyEmbeds(
@@ -35,10 +41,6 @@ object MarketplaceListener : ListenerAdapter() {
                     .queue()
                 return@launch
             }
-
-            // minehut:marketplace:post:<type>
-            val type = event.componentId.substringAfter("minehut:marketplace:post:")
-            if (type != "offer" && type != "request") return@launch
 
             val cooldown = CooldownManager.get(event.user.id, Cooldown.getMarketplaceType(type))
             if (cooldown != null) {
@@ -72,7 +74,7 @@ object MarketplaceListener : ListenerAdapter() {
         val content = message.content
         val postedBy = message.postedBy
         val type = message.type
-        scope.launch {
+        scope.launch(exceptionHandler) {
             val postedByUser = bot.retrieveUserById(postedBy).complete()
             val log = GuildLogger.of(channel.guild).log(
                 """

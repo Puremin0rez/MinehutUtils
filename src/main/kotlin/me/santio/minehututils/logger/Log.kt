@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.utils.FileUpload
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
+import org.slf4j.LoggerFactory
 
 /**
  * Represents a singular log that will be posted to the log channel
@@ -126,12 +127,23 @@ data class Log(
      */
     fun post(): Log {
         if (!guildLogger.isEnabled()) return this
-        val message = guildLogger.channel?.sendMessage(build())
-        if (fileUpload != null) {
-            message?.addFiles(fileUpload)
+
+        // The action being logged already happened, so a broken log channel must not fail it
+        try {
+            val message = guildLogger.channel?.sendMessage(build())
+            if (fileUpload != null) {
+                message?.addFiles(fileUpload)
+            }
+            message?.queue(null) { logger.warn("Failed to post a log message: {}", it.toString()) }
+        } catch (e: Exception) {
+            logger.warn("Failed to post a log message: {}", e.toString())
         }
-        message?.queue()
+
         return this
+    }
+
+    private companion object {
+        val logger = LoggerFactory.getLogger(Log::class.java)
     }
 
 }

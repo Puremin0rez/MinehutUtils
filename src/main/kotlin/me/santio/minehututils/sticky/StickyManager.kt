@@ -1,9 +1,11 @@
 package me.santio.minehututils.sticky
 
 import dev.minn.jda.ktx.coroutines.await
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.santio.minehututils.bot
 import me.santio.minehututils.commands.CommandLoader.logger
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.scope
 import net.dv8tion.jda.api.entities.MessageEmbed
@@ -112,14 +114,20 @@ object StickyManager {
      * @param force Whether to force refresh the stickied messages
      */
     fun refreshSticky(force: Boolean = false) {
-        scope.launch {
+        scope.launch(exceptionHandler) {
             stickyMessages.values.forEach { sticky ->
 
                 if (!sticky.active) return@forEach
                 val channel = bot.getGuildChannelById(sticky.channelId) as? MessageChannel ?: return@forEach
 
                 if (!force) {
-                    val lastMessage = channel.history.retrievePast(1).await().firstOrNull()
+                    // A channel we can no longer read shouldn't stop the other stickies from refreshing
+                    val lastMessage = runCatching { channel.history.retrievePast(1).await().firstOrNull() }
+                        .getOrElse {
+                            if (it is CancellationException) throw it
+                            logger.debug("Skipping sticky in {}: {}", sticky.channelId, it.toString())
+                            return@forEach
+                        }
                     if (lastMessage?.id == sticky.lastMessageId) return@forEach
                 }
 

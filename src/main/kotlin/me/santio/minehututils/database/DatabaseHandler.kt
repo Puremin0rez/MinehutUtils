@@ -49,7 +49,7 @@ object DatabaseHandler {
 
         iron.prepare(
             """
-                INSERT INTO settings(guild_id, marketplace_channel, marketplace_cooldown, lockdown_role) 
+                INSERT OR IGNORE INTO settings(guild_id, marketplace_channel, marketplace_cooldown, lockdown_role) 
                 VALUES (?, ?, ?, ?)
             """.trimIndent(),
             settings.guildId,
@@ -58,7 +58,8 @@ object DatabaseHandler {
             settings.lockdownRole
         )
 
-        return settings
+        // Another lookup may have created the row first, so return what's actually stored
+        return getSettingsNullable(guild) ?: settings
     }
 
     suspend fun getDataNullable(guild: String): GuildData? {
@@ -77,14 +78,14 @@ object DatabaseHandler {
 
         iron.prepare(
             """
-                INSERT INTO guild_data(guild_id, sticky_message) 
+                INSERT OR IGNORE INTO guild_data(guild_id, sticky_message) 
                 VALUES (?, ?)
             """.trimIndent(),
             data.guildId,
             data.stickyMessage
         )
 
-        return data
+        return getDataNullable(guild) ?: data
     }
 
 }

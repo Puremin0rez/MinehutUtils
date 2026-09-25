@@ -1,6 +1,7 @@
 package me.santio.minehututils.commands
 
 import kotlinx.coroutines.launch
+import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.scope
 import net.dv8tion.jda.api.JDA
 import org.slf4j.Logger
@@ -27,7 +28,7 @@ object CommandLoader {
             loaded.add(it)
         }
 
-        scope.launch {
+        scope.launch(exceptionHandler) {
             loaded.forEach { it.setup(bot) }
         }
 

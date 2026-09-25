@@ -3,8 +3,8 @@ package me.santio.minehututils.commands.impl
 import com.google.auto.service.AutoService
 import dev.minn.jda.ktx.interactions.commands.Command
 import me.santio.minehututils.commands.SlashCommand
+import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.ext.formatted
-import me.santio.minehututils.ext.reply
 import me.santio.minehututils.ext.toTime
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.minehut.Minehut
@@ -94,12 +94,16 @@ class ServerCommand : SlashCommand {
         val serverId = event.getOption("server")?.asString ?: error("Server not provided")
 
         val guild = event.guild ?: return
+
+        // The Minehut API can take longer than Discord's 3 second window to respond
+        event.deferReply(true).await()
+
         val data = server(serverId) ?: run {
-            event.reply(EmbedFactory.error("Failed to find the server", guild)).setEphemeral(true).queue()
+            event.hook.editOriginalEmbeds(EmbedFactory.error("Failed to find the server", guild).build()).queue()
             return
         }
 
-        event.reply(buildServerEmbed(guild, data)).setEphemeral(true).queue()
+        event.hook.editOriginalEmbeds(buildServerEmbed(guild, data).build()).queue()
     }
 
 }

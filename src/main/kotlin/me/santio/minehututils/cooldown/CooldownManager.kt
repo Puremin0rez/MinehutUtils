@@ -20,7 +20,7 @@ object CooldownManager {
      */
     fun start() {
         timer.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
+            override fun run() = synchronized(this@CooldownManager) {
                 cooldowns.cellSet().filter { it.value.isElapsed() }.forEach {
                     cooldowns.remove(it.rowKey, it.columnKey)
                 }
@@ -28,19 +28,24 @@ object CooldownManager {
         }, 0, 60000) // Cleanup task
     }
 
+    // The table isn't thread-safe, and cooldowns are read and written from different event threads
+    @Synchronized
     fun get(user: String, kind: Cooldown): UserCooldown? {
         return cooldowns.get(user, kind).takeIf { it?.isElapsed() == false }
     }
 
+    @Synchronized
     fun set(user: String, kind: Cooldown, duration: Duration) {
         cooldowns.put(user, kind, UserCooldown(System.currentTimeMillis() / 1000, duration.inWholeSeconds))
     }
 
+    @Synchronized
     fun clear(user: String, kind: Cooldown? = null) {
         cooldowns.cellSet().filter { it.rowKey == user && (kind == null || it.columnKey == kind) }
             .forEach { cooldowns.remove(it.rowKey, it.columnKey) }
     }
 
+    @Synchronized
     fun reset() {
         cooldowns.clear()
     }
