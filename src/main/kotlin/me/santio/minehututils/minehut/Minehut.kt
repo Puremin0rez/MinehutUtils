@@ -184,19 +184,19 @@ object Minehut {
             }
         }
 
-        var answered = false
+        var offline = 0
         repeat(sources.size) {
             when (results.receive()) {
                 true -> {
                     coroutineContext.cancelChildren()
                     return@coroutineScope true
                 }
-                false -> answered = true
+                false -> offline++
                 null -> {}
             }
         }
 
-        if (answered) false else null
+        if (offline == sources.size) false else null
     }
 
     suspend fun pingMcsrvstatUs(service: Service): Boolean? {
