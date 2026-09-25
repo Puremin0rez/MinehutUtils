@@ -211,7 +211,7 @@ class TagCommand : SlashCommand {
             if (it.modalId != "minehut:tag:edit:$id") return@listener
             cancel()
 
-            val searchValue = it.values.firstOrNull { it.id == "minehut:tag:edit" }?.asString
+            val searchValue = it.values.firstOrNull { it.id == "minehut:tag:edit" }?.asString?.trim()
                 ?: error("No search value provided")
             val body = it.values.firstOrNull { it.id == "minehut:tag:body" }?.asString
                 ?: error("No body provided")

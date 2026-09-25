@@ -1,6 +1,7 @@
 package me.santio.minehututils.sticky
 
 import dev.minn.jda.ktx.coroutines.await
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.santio.minehututils.bot
 import me.santio.minehututils.commands.CommandLoader.logger
@@ -122,7 +123,11 @@ object StickyManager {
                 if (!force) {
                     // A channel we can no longer read shouldn't stop the other stickies from refreshing
                     val lastMessage = runCatching { channel.history.retrievePast(1).await().firstOrNull() }
-                        .getOrElse { return@forEach }
+                        .getOrElse {
+                            if (it is CancellationException) throw it
+                            logger.debug("Skipping sticky in {}: {}", sticky.channelId, it.toString())
+                            return@forEach
+                        }
                     if (lastMessage?.id == sticky.lastMessageId) return@forEach
                 }
 

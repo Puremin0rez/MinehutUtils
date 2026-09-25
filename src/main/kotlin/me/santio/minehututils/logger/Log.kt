@@ -129,13 +129,15 @@ data class Log(
         if (!guildLogger.isEnabled()) return this
 
         // The action being logged already happened, so a broken log channel must not fail it
-        runCatching {
+        try {
             val message = guildLogger.channel?.sendMessage(build())
             if (fileUpload != null) {
                 message?.addFiles(fileUpload)
             }
             message?.queue(null) { logger.warn("Failed to post a log message: {}", it.toString()) }
-        }.onFailure { logger.warn("Failed to post a log message: {}", it.toString()) }
+        } catch (e: Exception) {
+            logger.warn("Failed to post a log message: {}", e.toString())
+        }
 
         return this
     }

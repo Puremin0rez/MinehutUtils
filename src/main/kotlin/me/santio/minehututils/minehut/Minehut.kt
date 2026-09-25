@@ -188,6 +188,7 @@ object Minehut {
         )
 
         runCatching { players() }.onFailure {
+            if (it is CancellationException) throw it
             logger.warn("Failed to fetch the player distribution for the status check: {}", it.toString())
         }.getOrNull().apply {
             if (this == null) {
@@ -204,6 +205,7 @@ object Minehut {
 
         for (service in listOf(Service.PROXY, Service.BEDROCK)) {
             runCatching { ping(service) }.onFailure {
+                if (it is CancellationException) throw it
                 logger.warn("Failed to ping {} for the status check: {}", service, it.toString())
             }.getOrNull().apply {
                 when {

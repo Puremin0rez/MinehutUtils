@@ -23,8 +23,10 @@ import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
+import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.interactions.callbacks.IModalCallback
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
+import net.dv8tion.jda.api.requests.ErrorResponse
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
 import org.slf4j.LoggerFactory
 import java.util.*
@@ -191,6 +193,8 @@ object MarketplaceManager: DatabaseHook {
         channel.sendMessage("Listing posted by ${event.user.asMention}")
             .addEmbeds(embed.build())
             .queue({
+                CooldownManager.set(event.user.id, Cooldown.getMarketplaceType(type), settings.marketplaceCooldown.seconds)
+
                 scope.launch(exceptionHandler) {
                     add(MarketplaceMessage(
                         id = it.id,
@@ -215,13 +219,14 @@ object MarketplaceManager: DatabaseHook {
                     ).build()
                 ).queue()
             }, { err -> listingFailed(event, err) })
-
-        CooldownManager.set(event.user.id, Cooldown.getMarketplaceType(type), settings.marketplaceCooldown.seconds)
     }
 
     suspend fun sendStickyEmbed(channel: TextChannel) {
         // The previous sticky may have been deleted by hand, that shouldn't stop a new one being posted
-        runCatching { getStickyMessage(channel.guild) }.getOrNull()?.delete()?.queue()
+        val previous = runCatching { getStickyMessage(channel.guild) }.getOrElse {
+            if (it is ErrorResponseException && it.errorResponse == ErrorResponse.UNKNOWN_MESSAGE) null else throw it
+        }
+        previous?.delete()?.queue()
 
         val offerButton = button("minehut:marketplace:post:offer", "Post an Offering", Emoji.fromFormatted("\uD83D\uDCE2"), ButtonStyle.SUCCESS)
         val requestButton = button("minehut:marketplace:post:request", "Post a Request", Emoji.fromFormatted("📝"), ButtonStyle.PRIMARY)

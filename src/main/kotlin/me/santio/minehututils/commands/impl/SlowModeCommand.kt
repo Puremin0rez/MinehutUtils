@@ -40,6 +40,7 @@ class SlowModeCommand : SlashCommand {
         val channel = event.channel as? ISlowmodeChannel ?: error("Slowmode can't be set in this channel")
 
         val seconds = min(duration.toSeconds(), ISlowmodeChannel.MAX_SLOWMODE.toLong()).toInt()
+        event.deferReply(true).await()
         channel.manager.setSlowmode(seconds).await()
         val setDuration = seconds.seconds
 
@@ -50,12 +51,12 @@ class SlowModeCommand : SlashCommand {
             ":package: Channel: ${event.channel.asMention} *(${event.channel.name} - ${event.channel.id})*",
         ).withContext(event).titled("Slowmode Modified").post()
 
-        event.replyEmbeds(
+        event.hook.editOriginalEmbeds(
             EmbedFactory.success(
                 "Set the slowmode for ${event.channel.asMention} to `${DurationResolver.pretty(setDuration)}`",
                 event.guild
             ).build()
-        ).setEphemeral(true).queue()
+        ).queue()
     }
 
 }

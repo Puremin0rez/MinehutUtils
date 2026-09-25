@@ -33,6 +33,7 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import org.slf4j.LoggerFactory
 import java.nio.file.Paths
 import java.util.*
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
@@ -120,12 +121,17 @@ private fun startHeartbeat() {
         ?: error("Unknown heartbeat resolver")
 
     val client = HttpClient(CIO) {}
+    val sending = AtomicBoolean(false)
     var failures = 0
 
     timer.schedule(0, interval.toMillis()) {
+        if (!sending.compareAndSet(false, true)) return@schedule // previous heartbeat is still running
+
         scope.launch(exceptionHandler) {
             try {
-                client.request(url) { method = httpMethod }
+                val response = client.request(url) { method = httpMethod }
+                if (!response.status.isSuccess()) error("Heartbeat returned ${response.status}")
+
                 if (failures > 0) logger.info("Heartbeat recovered after {} failed attempts", failures)
                 failures = 0
             } catch (e: CancellationException) {
@@ -134,6 +140,8 @@ private fun startHeartbeat() {
                 // Only warn once per outage, the heartbeat runs every few seconds
                 if (++failures == 1) logger.warn("Failed to send a heartbeat, retrying until it recovers: {}", e.toString())
                 else logger.debug("Failed to send a heartbeat ({} attempts): {}", failures, e.toString())
+            } finally {
+                sending.set(false)
             }
         }
     }

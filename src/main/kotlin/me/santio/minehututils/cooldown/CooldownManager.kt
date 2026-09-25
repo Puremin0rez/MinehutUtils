@@ -20,7 +20,7 @@ object CooldownManager {
      */
     fun start() {
         timer.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
+            override fun run() = synchronized(this@CooldownManager) {
                 cooldowns.cellSet().filter { it.value.isElapsed() }.forEach {
                     cooldowns.remove(it.rowKey, it.columnKey)
                 }

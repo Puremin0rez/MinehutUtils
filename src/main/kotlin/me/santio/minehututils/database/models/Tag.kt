@@ -39,7 +39,10 @@ data class Tag(
 
     private fun precompileRegex() {
         if (searchAlg == SearchAlgorithm.REGEX.id) {
-            this.regex = Regex(searchValue, RegexOption.IGNORE_CASE)
+            // An invalid stored pattern shouldn't stop every other tag from loading, it just never matches
+            this.regex = runCatching { Regex(searchValue, RegexOption.IGNORE_CASE) }
+                .onFailure { logger.warn("Tag {} has an invalid regex: {}", id, searchValue) }
+                .getOrNull()
         } else {
             this.regex = null
         }

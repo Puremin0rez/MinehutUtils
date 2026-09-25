@@ -13,19 +13,20 @@ import net.dv8tion.jda.api.entities.MessageEmbed
 object EmbedFactory {
 
     /**
-     * The base embed that all embeds are based off of.
-     * @param block The block that is used to modify the embed.
-     * @return The embed that is created.
-     */
-    /**
      * Shortens text to Discord's embed description limit, long user content (tags, stickies, logs)
      * would otherwise make the embed fail to build.
      */
     private fun fit(text: String): String {
         if (text.length <= MessageEmbed.DESCRIPTION_MAX_LENGTH) return text
-        return text.take(MessageEmbed.DESCRIPTION_MAX_LENGTH - 1) + "…"
+        val cut = text.take(MessageEmbed.DESCRIPTION_MAX_LENGTH - 1)
+        return cut.dropLastWhile { it.isHighSurrogate() } + "…" // Don't split an emoji in half
     }
 
+    /**
+     * The base embed that all embeds are based off of.
+     * @param block The block that is used to modify the embed.
+     * @return The embed that is created.
+     */
     private fun baseEmbed(block: (EmbedBuilder) -> Unit): EmbedBuilder {
         val embed = EmbedBuilder()
         embed.setTitle(" ")

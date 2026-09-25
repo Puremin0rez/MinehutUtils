@@ -154,11 +154,11 @@ object Lockdown: DatabaseHook {
 
                 return runCatching {
                     if (lastMessage?.author?.id == bot.selfUser.id) {
-                        lastMessage.delete().queue()
+                        lastMessage.delete().await()
                     } else {
                         channel.sendMessageEmbeds(EmbedFactory.default(
                             ":unlock: The channel has been unlocked by a moderator.",
-                        ).build()).queue()
+                        ).build()).await()
                     }
                 }.exceptionOrNull()?.let { "The channel was unlocked, but I couldn't post the unlock notice." }
             }

@@ -120,8 +120,10 @@ object AutoModResolver {
         if (channel in this.exemptChannels) return true
         if (member.roles.any { it in this.exemptRoles }) return true
 
-        // Discord uses Rust regex syntax, skip any pattern Java can't compile instead of failing the whole check
-        val regex = this.filteredRegex.mapNotNull { runCatching { Regex(it, RegexOption.IGNORE_CASE) }.getOrNull() }
+        // Discord uses Rust regex syntax, translate named groups and skip any other pattern Java can't compile
+        val regex = this.filteredRegex.mapNotNull {
+            runCatching { Regex(it.replace("(?P<", "(?<"), RegexOption.IGNORE_CASE) }.getOrNull()
+        }
         val blockedWords = this.filteredKeywords
         val allowedWords = this.allowlist
 

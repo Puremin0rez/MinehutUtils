@@ -58,7 +58,8 @@ object DatabaseHandler {
             settings.lockdownRole
         )
 
-        return settings
+        // Another lookup may have created the row first, so return what's actually stored
+        return getSettingsNullable(guild) ?: settings
     }
 
     suspend fun getDataNullable(guild: String): GuildData? {
@@ -84,7 +85,7 @@ object DatabaseHandler {
             data.stickyMessage
         )
 
-        return data
+        return getDataNullable(guild) ?: data
     }
 
 }

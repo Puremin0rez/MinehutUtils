@@ -87,7 +87,7 @@ object TagManager: DatabaseHook {
     }
 
     suspend fun addUse(tag: Tag) {
-        tag.uses++
+        synchronized(tag) { tag.uses++ }
         this.save(tag, updateTime = false, updateLastUsed = true)
     }
 
