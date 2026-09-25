@@ -9,6 +9,7 @@ import me.santio.minehututils.cooldown.Cooldown
 import me.santio.minehututils.cooldown.CooldownManager
 import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.coroutines.exceptionHandler
+import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.MarketplaceMessage
@@ -32,7 +33,7 @@ import org.slf4j.LoggerFactory
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 object MarketplaceManager: DatabaseHook {
@@ -86,7 +87,7 @@ object MarketplaceManager: DatabaseHook {
             paragraph("minehut:listing:description", "The description of your listing", requiredLength = IntRange(1, 3800))
         }).queue()
 
-        bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
+        bot.listener<ModalInteractionEvent> {
             if (it.modalId != "minehut:marketplace:modal:$id") return@listener
             cancel()
 
@@ -139,7 +140,7 @@ object MarketplaceManager: DatabaseHook {
             runCatching {
                 postListing(type, it, settings, title, description)
             }.onFailure { err -> listingFailed(it, err) }
-        }
+        }.expireAfter(1.hours)
     }
 
     private fun listingFailed(event: ModalInteractionEvent, err: Throwable) {
