@@ -25,11 +25,8 @@ object TagListener: ListenerAdapter() {
 
     override fun onMessageReceived(event: MessageReceivedEvent) {
         if (!event.isFromGuild) return
-        val tags = TagManager.getTags(event.guild.id)
-
         val message = event.message
-        val tag = tags.firstOrNull { it.isIncluded(message.contentRaw) }
-            ?: return
+        val tag = TagManager.find(event.guild.id, message.contentRaw) ?: return
 
         // Without these the reply would fail, so there's nothing to do in this channel
         val channel = event.guildChannel
