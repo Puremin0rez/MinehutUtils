@@ -1,15 +1,13 @@
 package me.santio.minehututils.commands.impl
 
 import com.google.auto.service.AutoService
-import dev.minn.jda.ktx.events.onEntitySelect
+import dev.minn.jda.ktx.events.listener
 import dev.minn.jda.ktx.interactions.commands.Command
 import dev.minn.jda.ktx.interactions.commands.Option
 import dev.minn.jda.ktx.interactions.commands.Subcommand
 import dev.minn.jda.ktx.interactions.commands.SubcommandGroup
 import dev.minn.jda.ktx.interactions.components.EntitySelectMenu
-import me.santio.minehututils.bot
 import me.santio.minehututils.commands.SlashCommand
-import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.iron
@@ -17,6 +15,7 @@ import me.santio.minehututils.lockdown.Lockdown
 import me.santio.minehututils.logger.GuildLogger
 import me.santio.minehututils.resolvers.DurationResolver
 import me.santio.minehututils.resolvers.EmojiResolver
+import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.components.selections.EntitySelectMenu
@@ -25,11 +24,10 @@ import net.dv8tion.jda.api.entities.Role
 import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
 import net.dv8tion.jda.api.interactions.InteractionContextType
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
-import java.util.*
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 @AutoService(SlashCommand::class)
@@ -175,7 +173,6 @@ class SettingsCommand: SlashCommand {
     }
 
     private fun setLockdownChannels(event: SlashCommandInteractionEvent) {
-        val id = UUID.randomUUID().toString()
         val channels = Lockdown.getLockdownChannels(event.guild!!.id)
 
         event.replyEmbeds(
@@ -183,7 +180,7 @@ class SettingsCommand: SlashCommand {
                 .build()
         ).addComponents(
             ActionRow.of(
-                EntitySelectMenu("minehut:settings:lockdown:channels:$id", listOf(SelectTarget.CHANNEL)) {
+                EntitySelectMenu("minehut:settings:lockdown:channels", listOf(SelectTarget.CHANNEL)) {
                     setChannelTypes(ChannelType.TEXT, ChannelType.FORUM)
                     setMaxValues(25)
                     setDefaultValues(channels.map {
@@ -192,24 +189,33 @@ class SettingsCommand: SlashCommand {
                 }
             )
         ).setEphemeral(true).queue()
+    }
 
-        bot.onEntitySelect("minehut:settings:lockdown:channels:$id") {
-            cancel()
+    override suspend fun setup(bot: JDA) {
+        bot.listener<EntitySelectInteractionEvent> {
+            if (it.componentId != "minehut:settings:lockdown:channels") return@listener
+            val guild = it.guild ?: return@listener
 
-            val channels = it.values.map { it.id }
-            Lockdown.setChannels(event.guild!!.id, channels)
+            if (it.message.interactionMetadata?.user?.idLong != it.user.idLong) {
+                it.replyEmbeds(EmbedFactory.error("Only the person who opened this menu can use it.", guild).build())
+                    .setEphemeral(true).queue()
+                return@listener
+            }
 
-            GuildLogger.of(event.guild!!).log(
-                "The lockdown channels were modified by ${event.user.asMention}",
-                ":identification_card: User: ${event.member?.asMention} *(${event.user.name} - ${event.user.id})*",
-                ":package: Channel IDs: ${channels.joinToString(", ")} *(${it.values.joinToString(", ") { it.asMention }})*"
-            ).withContext(event).titled("Lockdown Channels Modified").post()
+            val channels = it.values.map { value -> value.id }
+            Lockdown.setChannels(guild.id, channels)
 
-            it.replyEmbeds(
+            it.editMessageEmbeds(
                 EmbedFactory.default("Successfully updated the lockdown channels!")
                     .build()
-            ).setEphemeral(true).queue()
-        }.expireAfter(15.minutes)
+            ).setComponents().queue()
+
+            GuildLogger.of(guild).log(
+                "The lockdown channels were modified by ${it.user.asMention}",
+                ":identification_card: User: ${it.member?.asMention} *(${it.user.name} - ${it.user.id})*",
+                ":package: Channel IDs: ${channels.joinToString(", ")} *(${it.values.joinToString(", ") { value -> value.asMention }})*"
+            ).withContext(it).titled("Lockdown Channels Modified").post()
+        }
     }
 
     private suspend fun setLogChannel(event: SlashCommandInteractionEvent) {

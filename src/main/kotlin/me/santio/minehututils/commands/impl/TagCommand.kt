@@ -224,6 +224,11 @@ class TagCommand : SlashCommand {
                 return@listener
             }
 
+            if (tag.id?.let { id -> TagManager.get(id) } == null) {
+                it.replyEmbeds(EmbedFactory.error("That tag was deleted while you were editing it", event.guild!!).build()).setEphemeral(true).queue()
+                return@listener
+            }
+
             tag.searchValue = searchValue
             tag.body = body
             tag.guildId = if (global) null else event.guild!!.id
