@@ -29,6 +29,8 @@ object Skript {
     @Volatile
     private var syntaxList = listOf<SkriptSyntax>()
     @Volatile
+    private var uniqueTitles = listOf<SkriptSyntax>()
+    @Volatile
     private var exampleList = listOf<SkriptExample>()
 
     private val httpClient = HttpClient(CIO) {
@@ -74,6 +76,7 @@ object Skript {
             syntaxList = list
                 .sortedBy { it.title }
                 .onEach { it.title = it.title.titlecase() }
+            uniqueTitles = syntaxList.distinctBy { it.title }
 
             // Fetch example list
             val examples = httpClient.get("syntaxexample")
@@ -95,9 +98,7 @@ object Skript {
      * @return A list of syntaxes that match the query
      */
     fun search(query: String): List<SkriptSyntax> {
-        return syntaxList
-            .distinctBy { it.title }
-            .filter { it.title.contains(query, ignoreCase = true) }
+        return uniqueTitles.filter { it.title.contains(query, ignoreCase = true) }
     }
 
     /**

@@ -15,6 +15,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.OptionData
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
 
@@ -95,10 +96,11 @@ class SkriptCommand : SlashCommand {
         return if (id != null) {
             Skript.search(id)
                 .filter { it.id.toString().startsWith(query) }
+                .take(OptionData.MAX_CHOICES)
                 .map { Command.Choice("[${it.id}] ${it.title}", it.id) }
         } else {
             Skript.search(query)
-                .filter { it.title.contains(query, ignoreCase = true) }
+                .take(OptionData.MAX_CHOICES)
                 .map { Command.Choice(it.title, it.title) }
         }
     }

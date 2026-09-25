@@ -146,6 +146,8 @@ object Minehut {
         return servers
     }
 
+    fun cachedServers(): List<ListedServer> = serverCache ?: emptyList()
+
     private suspend fun fetchServers(): List<ListedServer>? {
         return client.getServers(
             q = null,

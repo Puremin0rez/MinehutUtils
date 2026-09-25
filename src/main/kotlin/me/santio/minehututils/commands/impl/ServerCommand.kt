@@ -21,6 +21,7 @@ import net.dv8tion.jda.api.interactions.InteractionContextType
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import net.dv8tion.jda.api.interactions.commands.build.OptionData
 import kotlin.math.round
 
 @AutoService(SlashCommand::class)
@@ -83,11 +84,13 @@ class ServerCommand : SlashCommand {
     }
 
     override suspend fun autoComplete(event: CommandAutoCompleteInteractionEvent): List<Command.Choice> {
-        return Minehut.servers()
+        val query = event.focusedOption.value
+        return Minehut.cachedServers().asSequence()
             .mapNotNull { it.name }
-            .map {
-                Command.Choice(it, it)
-            }
+            .filter { it.contains(query, ignoreCase = true) }
+            .take(OptionData.MAX_CHOICES)
+            .map { Command.Choice(it, it) }
+            .toList()
     }
 
     override suspend fun execute(event: SlashCommandInteractionEvent) {
