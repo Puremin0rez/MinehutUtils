@@ -95,7 +95,6 @@ class SkriptCommand : SlashCommand {
         val id = query.toLongOrNull()
         return if (id != null) {
             Skript.search(id)
-                .filter { it.id.toString().startsWith(query) }
                 .take(OptionData.MAX_CHOICES)
                 .map { Command.Choice("[${it.id}] ${it.title}", it.id) }
         } else {

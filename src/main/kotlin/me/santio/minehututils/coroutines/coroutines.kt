@@ -11,6 +11,7 @@ import me.santio.minehututils.scope
 import net.dv8tion.jda.api.requests.RestAction
 import net.dv8tion.jda.api.utils.concurrent.Task
 import org.slf4j.LoggerFactory
+import java.lang.ref.WeakReference
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -57,9 +58,10 @@ suspend fun <T> Task<T>.await() = suspendCancellableCoroutine<T> {
 }
 
 fun CoroutineEventListener.expireAfter(ttl: Duration): CoroutineEventListener {
+    val listener = WeakReference(this)
     scope.launch {
         delay(ttl)
-        cancel()
+        listener.get()?.cancel()
     }
     return this
 }
