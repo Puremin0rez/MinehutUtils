@@ -24,6 +24,7 @@ import me.santio.minehututils.marketplace.MarketplaceManager
 import me.santio.minehututils.minehut.Minehut
 import me.santio.minehututils.resolvers.DurationResolver
 import me.santio.minehututils.skript.Skript
+import me.santio.minehututils.sticky.StickyListener
 import me.santio.minehututils.sticky.StickyManager
 import me.santio.minehututils.tags.TagListener
 import me.santio.minehututils.utils.EnvUtils.env
@@ -76,7 +77,7 @@ suspend fun main() {
     CommandLoader.load(bot)
     bot.updateCommands().addCommands(CommandManager.collect()).queue()
 
-    bot.addEventListener(MarketplaceListener, TagListener)
+    bot.addEventListener(MarketplaceListener, TagListener, StickyListener)
     bot.listener<SlashCommandInteractionEvent> {
         CommandManager.execute(it)
     }
