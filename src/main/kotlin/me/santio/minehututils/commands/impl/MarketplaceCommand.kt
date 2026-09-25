@@ -9,6 +9,7 @@ import me.santio.minehututils.bot
 import me.santio.minehututils.commands.SlashCommand
 import me.santio.minehututils.cooldown.Cooldown
 import me.santio.minehututils.cooldown.CooldownManager
+import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.marketplace.MarketplaceManager
@@ -18,7 +19,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.interactions.InteractionContextType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import java.util.*
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.minutes
 
 @AutoService(SlashCommand::class)
 class MarketplaceCommand : SlashCommand {
@@ -55,7 +56,7 @@ class MarketplaceCommand : SlashCommand {
             }
         ).setEphemeral(true).queue()
 
-        bot.onStringSelect("minehut:marketplace:type:$id", timeout = 30.seconds) {
+        bot.onStringSelect("minehut:marketplace:type:$id") {
             cancel()
 
             // Check if the user is on cooldown
@@ -72,7 +73,7 @@ class MarketplaceCommand : SlashCommand {
             }
 
             MarketplaceManager.handlePosting(it, selected, settings)
-        }
+        }.expireAfter(15.minutes)
     }
 
 }

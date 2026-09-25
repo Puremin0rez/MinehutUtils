@@ -8,6 +8,7 @@ import dev.minn.jda.ktx.interactions.commands.Subcommand
 import dev.minn.jda.ktx.interactions.components.Modal
 import me.santio.minehututils.bot
 import me.santio.minehututils.commands.SlashCommand
+import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.models.Tag
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.logger.GuildLogger
@@ -22,7 +23,7 @@ import net.dv8tion.jda.api.interactions.commands.Command.Choice
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import java.util.*
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.hours
 
 @AutoService(SlashCommand::class)
 class TagCommand : SlashCommand {
@@ -112,7 +113,7 @@ class TagCommand : SlashCommand {
 
         event.replyModal(modal).queue()
 
-        bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
+        bot.listener<ModalInteractionEvent> {
             if (it.modalId != "minehut:tag:create:$id") return@listener
             cancel()
 
@@ -149,7 +150,7 @@ class TagCommand : SlashCommand {
             it.replyEmbeds(
                 EmbedFactory.success("Successfully created the tag `${tag.name}`!", event.guild!!).build()
             ).setEphemeral(true).queue()
-        }
+        }.expireAfter(1.hours)
     }
 
     private suspend fun deleteTag(event: SlashCommandInteractionEvent) {
@@ -207,7 +208,7 @@ class TagCommand : SlashCommand {
 
         event.replyModal(modal).queue()
 
-        bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
+        bot.listener<ModalInteractionEvent> {
             if (it.modalId != "minehut:tag:edit:$id") return@listener
             cancel()
 
@@ -238,7 +239,7 @@ class TagCommand : SlashCommand {
             it.replyEmbeds(
                 EmbedFactory.success("Successfully edited the tag `${tag.name}`!", event.guild!!).build()
             ).setEphemeral(true).queue()
-        }
+        }.expireAfter(1.hours)
     }
 
     private fun getTagInfo(event: SlashCommandInteractionEvent) {
