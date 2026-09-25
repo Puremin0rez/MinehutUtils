@@ -2,6 +2,7 @@ package me.santio.minehututils.marketplace
 
 import dev.minn.jda.ktx.events.listener
 import dev.minn.jda.ktx.interactions.components.Modal
+import dev.minn.jda.ktx.interactions.components.TextInput
 import dev.minn.jda.ktx.interactions.components.button
 import kotlinx.coroutines.launch
 import me.santio.minehututils.bot
@@ -19,6 +20,9 @@ import me.santio.minehututils.iron
 import me.santio.minehututils.resolvers.AutoModResolver
 import me.santio.minehututils.resolvers.EmojiResolver
 import me.santio.minehututils.scope
+import net.dv8tion.jda.api.components.actionrow.ActionRow
+import net.dv8tion.jda.api.components.buttons.ButtonStyle
+import net.dv8tion.jda.api.components.textinput.TextInputStyle
 import net.dv8tion.jda.api.entities.Guild
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
@@ -26,7 +30,6 @@ import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.exceptions.ErrorResponseException
 import net.dv8tion.jda.api.interactions.callbacks.IModalCallback
-import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
 import net.dv8tion.jda.api.requests.ErrorResponse
 import net.dv8tion.jda.api.utils.MarkdownSanitizer
 import org.slf4j.LoggerFactory
@@ -82,9 +85,9 @@ object MarketplaceManager: DatabaseHook {
         val id = UUID.randomUUID().toString()
 
         e.replyModal(Modal("minehut:marketplace:modal:$id", "Customize your listing") {
-            short("minehut:listing:title", "The title of your listing", requiredLength = IntRange(1, 100))
+            label("The title of your listing", child = TextInput("minehut:listing:title", TextInputStyle.SHORT, requiredLength = IntRange(1, 100)))
             // Leaves room for the listing header within Discord's 4096 character embed limit
-            paragraph("minehut:listing:description", "The description of your listing", requiredLength = IntRange(1, 3800))
+            label("The description of your listing", child = TextInput("minehut:listing:description", TextInputStyle.PARAGRAPH, requiredLength = IntRange(1, 3800)))
         }).queue()
 
         bot.listener<ModalInteractionEvent> {
@@ -92,8 +95,8 @@ object MarketplaceManager: DatabaseHook {
             cancel()
 
             val title =
-                it.values.firstOrNull { it.id == "minehut:listing:title" }?.asString ?: error("No title provided")
-            val description = it.values.firstOrNull { it.id == "minehut:listing:description" }?.asString
+                it.getValue("minehut:listing:title")?.asString ?: error("No title provided")
+            val description = it.getValue("minehut:listing:description")?.asString
                 ?: error("No description provided")
 
             // Restrict the number of repetitive empty lines
@@ -229,8 +232,8 @@ object MarketplaceManager: DatabaseHook {
         }
         previous?.delete()?.queue()
 
-        val offerButton = button("minehut:marketplace:post:offer", "Post an Offering", Emoji.fromFormatted("\uD83D\uDCE2"), ButtonStyle.SUCCESS)
-        val requestButton = button("minehut:marketplace:post:request", "Post a Request", Emoji.fromFormatted("📝"), ButtonStyle.PRIMARY)
+        val offerButton = button("minehut:marketplace:post:offer", "Post an Offering", Emoji.fromFormatted("\uD83D\uDCE2"), style = ButtonStyle.SUCCESS)
+        val requestButton = button("minehut:marketplace:post:request", "Post a Request", Emoji.fromFormatted("📝"), style = ButtonStyle.PRIMARY)
 
         val message = channel.sendMessageEmbeds(
             EmbedFactory.default(
@@ -246,7 +249,7 @@ object MarketplaceManager: DatabaseHook {
                 Read the pinned message in this channel to learn more!
                 """.trimMargin()
             ).build()
-        ).addActionRow(offerButton, requestButton).complete()
+        ).addComponents(ActionRow.of(offerButton, requestButton)).complete()
 
         iron.prepare(
             "UPDATE guild_data SET sticky_message = ? WHERE guild_id = ?",

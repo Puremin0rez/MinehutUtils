@@ -14,6 +14,7 @@ import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.marketplace.MarketplaceManager
 import me.santio.minehututils.resolvers.DurationResolver.discord
+import net.dv8tion.jda.api.components.actionrow.ActionRow
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.interactions.InteractionContextType
@@ -49,11 +50,13 @@ class MarketplaceCommand : SlashCommand {
         event.replyEmbeds(
             EmbedFactory.default("Are you looking to offer or request?")
                 .build()
-        ).addActionRow(
-            StringSelectMenu("minehut:marketplace:type:$id", "Select an option") {
-                option("Offering", "offer", emoji = Emoji.fromFormatted("\uD83D\uDCE2"))
-                option("Requesting", "request", emoji = Emoji.fromFormatted("📝"))
-            }
+        ).addComponents(
+            ActionRow.of(
+                StringSelectMenu("minehut:marketplace:type:$id", placeholder = "Select an option") {
+                    option("Offering", "offer", emoji = Emoji.fromFormatted("\uD83D\uDCE2"))
+                    option("Requesting", "request", emoji = Emoji.fromFormatted("📝"))
+                }
+            )
         ).setEphemeral(true).queue()
 
         bot.onStringSelect("minehut:marketplace:type:$id") {
