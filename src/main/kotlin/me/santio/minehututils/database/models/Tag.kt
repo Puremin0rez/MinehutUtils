@@ -30,14 +30,23 @@ data class Tag(
     var regex: Regex? = null
         private set
 
+    private var algorithm: SearchAlgorithm? = null
+    var terms: List<String> = emptyList()
+        private set
+
     val name: String
         get() = "${searchAlg().name.lowercase()}: $searchValue"
 
     init {
-        precompileRegex()
+        precompile()
     }
 
-    private fun precompileRegex() {
+    private fun precompile() {
+        algorithm = SearchAlgorithm.from(searchAlg)
+
+        // Blank segments (from "a|" or "a||b") would otherwise match every message
+        terms = searchValue.split('|').filter { it.isNotBlank() }
+
         if (searchAlg == SearchAlgorithm.REGEX.id) {
             // An invalid stored pattern shouldn't stop every other tag from loading, it just never matches
             this.regex = runCatching { Regex(searchValue, RegexOption.IGNORE_CASE) }
@@ -53,7 +62,7 @@ data class Tag(
      * @return The search algorithm
      */
     fun searchAlg(): SearchAlgorithm {
-        return SearchAlgorithm.from(searchAlg)
+        return algorithm
             ?: throw IllegalStateException("Invalid search algorithm: $searchAlg")
     }
 
@@ -63,7 +72,7 @@ data class Tag(
      */
     fun searchAlg(searchAlg: SearchAlgorithm) {
         this.searchAlg = searchAlg.id
-        precompileRegex()
+        precompile()
     }
 
     /**

@@ -53,6 +53,10 @@ object TagManager: DatabaseHook {
         return tags.values.filter { it.guildId == guild || it.guildId == null }
     }
 
+    fun find(guild: String, message: String): Tag? {
+        return tags.values.firstOrNull { (it.guildId == guild || it.guildId == null) && it.isIncluded(message) }
+    }
+
     suspend fun fetchAll(): List<Tag> {
         return iron.prepare("SELECT * FROM tags WHERE deleted_at IS NULL").all()
     }
