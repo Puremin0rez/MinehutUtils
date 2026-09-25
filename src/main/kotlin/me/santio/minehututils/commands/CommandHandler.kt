@@ -13,23 +13,24 @@ import net.dv8tion.jda.api.requests.ErrorResponse
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.nio.channels.UnresolvedAddressException
+import java.util.concurrent.ConcurrentHashMap
 
 object CommandManager {
 
     private val logger = LoggerFactory.getLogger(javaClass)
-    private val commands = mutableListOf<SlashCommand>()
+    private val commands = ConcurrentHashMap<String, SlashCommand>()
     private val permissionErrors = setOf(ErrorResponse.MISSING_PERMISSIONS, ErrorResponse.MISSING_ACCESS)
 
     fun collect(): List<CommandData> {
-        return commands.map { it.getData() }
+        return commands.values.map { it.getData() }
     }
 
     fun register(vararg commands: SlashCommand) {
-        commands.forEach { this.commands.add(it) }
+        commands.forEach { this.commands[it.getData().name] = it }
     }
 
     suspend fun execute(event: SlashCommandInteractionEvent) {
-        val command = commands.find { it.getData().name == event.name }
+        val command = commands[event.name]
 
         if (command == null) {
             event.replyEmbeds(EmbedFactory.error("Command not found", event.guild).build()).queue()
@@ -95,7 +96,7 @@ object CommandManager {
     }
 
     suspend fun autoComplete(event: CommandAutoCompleteInteractionEvent) {
-        val command = commands.find { it.getData().name == event.name }
+        val command = commands[event.name]
             ?: return
 
         kotlin.runCatching {
