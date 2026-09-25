@@ -9,6 +9,8 @@ import io.ktor.client.request.*
 import io.ktor.serialization.gson.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.santio.minehututils.coroutines.exceptionHandler
@@ -181,13 +183,14 @@ object Minehut {
      * Get the status of core Minehut services
      * @return A map of services to their status
      */
-    suspend fun status(): Map<Service, State> {
+    suspend fun status(): Map<Service, State> = coroutineScope {
         val status = mutableMapOf(
             Service.JAVA to State.ONLINE,
             Service.BEDROCK to State.ONLINE,
             Service.API to State.ONLINE,
             Service.PROXY to State.ONLINE,
         )
+        val pings = listOf(Service.PROXY, Service.BEDROCK).associateWith { async { runCatching { ping(it) } } }
 
         runCatching { players() }.onFailure {
             if (it is CancellationException) throw it
@@ -205,8 +208,8 @@ object Minehut {
             if (this.javaTotal != null && this.javaTotal == 0) status[Service.JAVA] = State.OFFLINE
         }
 
-        for (service in listOf(Service.PROXY, Service.BEDROCK)) {
-            runCatching { ping(service) }.onFailure {
+        for ((service, ping) in pings) {
+            ping.await().onFailure {
                 if (it is CancellationException) throw it
                 logger.warn("Failed to ping {} for the status check: {}", service, it.toString())
             }.getOrNull().apply {
@@ -219,7 +222,7 @@ object Minehut {
 
         // TODO: Implement version checking
 
-        return status
+        status
     }
 
 }
