@@ -1,6 +1,7 @@
 package me.santio.minehututils.lockdown
 
 import com.google.auto.service.AutoService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.santio.minehututils.bot
@@ -122,7 +123,10 @@ object Lockdown: DatabaseHook {
                 ).build()
 
                 runCatching { channel.sendMessageEmbeds(notice).await() }
-                    .onFailure { warning = "The channel was locked, but I couldn't post the lock notice." }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        warning = "The channel was locked, but I couldn't post the lock notice."
+                    }
             }
 
             // Explicitly deny the @everyone role from speaking
@@ -152,15 +156,20 @@ object Lockdown: DatabaseHook {
                 val lastMessage = channel.latestMessageId.takeIf { it != "0" }
                     ?.let { runCatching { channel.retrieveMessageById(it).await() }.getOrNull() }
 
+                val deleting = lastMessage?.author?.id == bot.selfUser.id
                 return runCatching {
-                    if (lastMessage?.author?.id == bot.selfUser.id) {
-                        lastMessage.delete().await()
+                    if (deleting) {
+                        lastMessage!!.delete().await()
                     } else {
                         channel.sendMessageEmbeds(EmbedFactory.default(
                             ":unlock: The channel has been unlocked by a moderator.",
                         ).build()).await()
                     }
-                }.exceptionOrNull()?.let { "The channel was unlocked, but I couldn't post the unlock notice." }
+                }.exceptionOrNull()?.let {
+                    if (it is CancellationException) throw it
+                    if (deleting) "The channel was unlocked, but I couldn't remove the lock notice."
+                    else "The channel was unlocked, but I couldn't post the unlock notice."
+                }
             }
         }
 
