@@ -9,6 +9,7 @@ import dev.minn.jda.ktx.interactions.commands.SubcommandGroup
 import dev.minn.jda.ktx.interactions.components.EntitySelectMenu
 import me.santio.minehututils.bot
 import me.santio.minehututils.commands.SlashCommand
+import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.factories.EmbedFactory
 import me.santio.minehututils.iron
@@ -189,7 +190,7 @@ class SettingsCommand: SlashCommand {
             }
         ).setEphemeral(true).queue()
 
-        bot.onEntitySelect("minehut:settings:lockdown:channels:$id", timeout = 2.minutes) {
+        bot.onEntitySelect("minehut:settings:lockdown:channels:$id") {
             cancel()
 
             val channels = it.values.map { it.id }
@@ -205,7 +206,7 @@ class SettingsCommand: SlashCommand {
                 EmbedFactory.default("Successfully updated the lockdown channels!")
                     .build()
             ).setEphemeral(true).queue()
-        }
+        }.expireAfter(15.minutes)
     }
 
     private suspend fun setLogChannel(event: SlashCommandInteractionEvent) {

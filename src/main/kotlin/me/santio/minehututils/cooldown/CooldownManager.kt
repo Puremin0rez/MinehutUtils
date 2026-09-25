@@ -15,8 +15,6 @@ object CooldownManager {
 
     /**
      * Starts the cooldown manager, this should be called once the bot is ready.
-     *
-     * todo: Unused in bot? Probably remove if unnecessary to prevent confusion
      */
     fun start() {
         timer.scheduleAtFixedRate(object : TimerTask() {

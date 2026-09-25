@@ -2,14 +2,20 @@
 
 package me.santio.minehututils.coroutines
 
+import dev.minn.jda.ktx.events.CoroutineEventListener
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import me.santio.minehututils.scope
 import net.dv8tion.jda.api.requests.RestAction
 import net.dv8tion.jda.api.utils.concurrent.Task
 import org.slf4j.LoggerFactory
+import java.lang.ref.WeakReference
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.time.Duration
 
 private val logger = LoggerFactory.getLogger("MinehutUtils-CoroutineScope")
 
@@ -49,6 +55,15 @@ suspend fun <T> Task<T>.await() = suspendCancellableCoroutine<T> {
     it.invokeOnCancellation { cancel() }
     onSuccess { r -> it.resume(r) }
     onError { e -> it.resumeWithException(e) }
+}
+
+fun CoroutineEventListener.expireAfter(ttl: Duration): CoroutineEventListener {
+    val listener = WeakReference(this)
+    scope.launch {
+        delay(ttl)
+        listener.get()?.cancel()
+    }
+    return this
 }
 
 /**

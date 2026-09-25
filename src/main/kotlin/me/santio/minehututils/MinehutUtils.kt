@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import me.santio.minehututils.commands.CommandLoader
 import me.santio.minehututils.commands.CommandManager
+import me.santio.minehututils.cooldown.CooldownManager
 import me.santio.minehututils.coroutines.exceptionHandler
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.marketplace.MarketplaceListener
@@ -23,6 +24,7 @@ import me.santio.minehututils.marketplace.MarketplaceManager
 import me.santio.minehututils.minehut.Minehut
 import me.santio.minehututils.resolvers.DurationResolver
 import me.santio.minehututils.skript.Skript
+import me.santio.minehututils.sticky.StickyListener
 import me.santio.minehututils.sticky.StickyManager
 import me.santio.minehututils.tags.TagListener
 import me.santio.minehututils.utils.EnvUtils.env
@@ -75,7 +77,7 @@ suspend fun main() {
     CommandLoader.load(bot)
     bot.updateCommands().addCommands(CommandManager.collect()).queue()
 
-    bot.addEventListener(MarketplaceListener, TagListener)
+    bot.addEventListener(MarketplaceListener, TagListener, StickyListener)
     bot.listener<SlashCommandInteractionEvent> {
         CommandManager.execute(it)
     }
@@ -103,6 +105,8 @@ suspend fun main() {
     timer.schedule(0, 1000 * 5) { // 5 seconds
         StickyManager.refreshSticky()
     }
+
+    CooldownManager.start()
 
     // Attach shutdown hooks
     Runtime.getRuntime().addShutdownHook(Thread {

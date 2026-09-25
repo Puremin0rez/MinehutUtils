@@ -9,6 +9,7 @@ import me.santio.minehututils.cooldown.Cooldown
 import me.santio.minehututils.cooldown.CooldownManager
 import me.santio.minehututils.coroutines.await
 import me.santio.minehututils.coroutines.exceptionHandler
+import me.santio.minehututils.coroutines.expireAfter
 import me.santio.minehututils.database.DatabaseHandler
 import me.santio.minehututils.database.DatabaseHook
 import me.santio.minehututils.database.models.MarketplaceMessage
@@ -32,7 +33,7 @@ import org.slf4j.LoggerFactory
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 object MarketplaceManager: DatabaseHook {
@@ -45,10 +46,10 @@ object MarketplaceManager: DatabaseHook {
     )
 
     // Read by message delete events while listings are added and cleared from other threads
-    private val messages = ConcurrentHashMap.newKeySet<MarketplaceMessage>()
+    private val messages = ConcurrentHashMap<String, MarketplaceMessage>()
 
     override suspend fun onHook() {
-        messages.addAll(this.fetchAll())
+        this.fetchAll().forEach { messages[it.id] = it }
     }
 
     suspend fun fetchAll(): List<MarketplaceMessage> {
@@ -56,7 +57,7 @@ object MarketplaceManager: DatabaseHook {
     }
 
     fun getListing(id: String): MarketplaceMessage? {
-        return messages.firstOrNull { it.id == id }
+        return messages[id]
     }
 
     suspend fun getStickyMessage(guild: Guild): Message? {
@@ -68,7 +69,7 @@ object MarketplaceManager: DatabaseHook {
     }
 
     suspend fun add(message: MarketplaceMessage) {
-        messages.add(message)
+        messages[message.id] = message
 
         iron.prepare(
             "INSERT INTO marketplace_logs(id, posted_by, type, title, content, posted_at) VALUES (:id, :postedBy, :type, :title, :content, :postedAt)",
@@ -86,7 +87,7 @@ object MarketplaceManager: DatabaseHook {
             paragraph("minehut:listing:description", "The description of your listing", requiredLength = IntRange(1, 3800))
         }).queue()
 
-        bot.listener<ModalInteractionEvent>(timeout = 15.minutes) {
+        bot.listener<ModalInteractionEvent> {
             if (it.modalId != "minehut:marketplace:modal:$id") return@listener
             cancel()
 
@@ -139,7 +140,7 @@ object MarketplaceManager: DatabaseHook {
             runCatching {
                 postListing(type, it, settings, title, description)
             }.onFailure { err -> listingFailed(it, err) }
-        }
+        }.expireAfter(1.hours)
     }
 
     private fun listingFailed(event: ModalInteractionEvent, err: Throwable) {
@@ -265,7 +266,7 @@ object MarketplaceManager: DatabaseHook {
     fun clearOldMessages() {
         scope.launch(exceptionHandler) {
             val now = System.currentTimeMillis()
-            messages.removeIf { now - it.postedAt > 604800000 } // 7 days
+            messages.values.removeIf { now - it.postedAt > 604800000 } // 7 days
             iron.prepare("DELETE FROM marketplace_logs WHERE posted_at < ?", now - 604800000)
         }
     }
