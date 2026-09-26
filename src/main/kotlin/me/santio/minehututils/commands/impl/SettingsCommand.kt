@@ -28,6 +28,7 @@ import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionE
 import net.dv8tion.jda.api.interactions.InteractionContextType
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
+import java.time.OffsetDateTime
 import kotlin.time.Duration.Companion.seconds
 
 @AutoService(SlashCommand::class)
@@ -199,6 +200,12 @@ class SettingsCommand: SlashCommand {
             if (it.message.interactionMetadata?.user?.idLong != it.user.idLong) {
                 it.replyEmbeds(EmbedFactory.error("Only the person who opened this menu can use it.", guild).build())
                     .setEphemeral(true).queue()
+                return@listener
+            }
+
+            if (it.message.timeCreated.isBefore(OffsetDateTime.now().minusMinutes(15))) {
+                it.editMessageEmbeds(EmbedFactory.error("This menu expired, run the command again.", guild).build())
+                    .setComponents().queue()
                 return@listener
             }
 
